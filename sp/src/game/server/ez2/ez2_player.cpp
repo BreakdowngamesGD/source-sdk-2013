@@ -36,7 +36,7 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-ConVar player_mute_responses( "player_mute_responses", "0", FCVAR_ARCHIVE, "Mutes the responsive Bad Cop." );
+ConVar player_mute_responses( "player_mute_responses", "1", FCVAR_ARCHIVE, "Mutes the responsive Bad Cop." );
 ConVar player_dummy_in_squad( "player_dummy_in_squad", "0", FCVAR_ARCHIVE, "Puts the player dummy in the player's squad, which means squadmates will see enemies the player sees." );
 ConVar player_dummy( "player_dummy", "1", FCVAR_NONE, "Enables the player NPC dummy." );
 
