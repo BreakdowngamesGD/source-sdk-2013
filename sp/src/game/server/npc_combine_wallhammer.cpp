@@ -8,7 +8,7 @@
 #include "ai_hull.h"
 #include "ai_motor.h"
 #include "npc_combine.h"
-#include "npc_combine_wallhammer.h"
+#include "npc_combine_hla.h"
 #include "npcevent.h"
 #include "engine/IEngineSound.h"
 #include "explode.h"
@@ -38,9 +38,6 @@ ConVar	wallhammer_flash_range("wallhammer_flash_range", "120");
 ConVar	wallhammer_flash_cooldown("wallhammer_flash_cooldown", "15", FCVAR_NONE, "Seconds before the Wallhammer's flash can go off again.");
 ConVar	wallhammer_prop_destroy_range("wallhammer_prop_destroy_range", "80");
 ConVar	wallhammer_prop_crush_distance("wallhammer_prop_crush_distance", "50");
-
-ConVar	wallhammer_investigate_enabled("wallhammer_investigate_enabled", "1", FCVAR_NONE, "1 = Wallhammer walks to investigate sounds (gunfire, player noise, world noise) from things he hasn't seen.");
-ConVar	wallhammer_investigate_cooldown("wallhammer_investigate_cooldown", "3", FCVAR_NONE, "Minimum seconds between starting investigations.");
 
 ConVar	wallhammer_close_range("wallhammer_close_range", "90", FCVAR_NONE, "Target distance (in units) the Wallhammer strives to reach in combat.");
 ConVar	wallhammer_aggressive_advance("wallhammer_aggressive_advance", "1", FCVAR_NONE, "1 = aggressively advance/charge target during combat if outside close range.");
@@ -156,7 +153,6 @@ DEFINE_FIELD(m_flNextPainVoiceTime, FIELD_TIME),
 DEFINE_FIELD(m_flNextCombatIdleTime, FIELD_TIME),
 DEFINE_FIELD(m_bNearPanicSpoken, FIELD_BOOLEAN),
 DEFINE_FIELD(m_bKillSpoken, FIELD_BOOLEAN),
-DEFINE_FIELD(m_flNextInvestigateTime, FIELD_TIME),
 END_DATADESC()
 
 //-----------------------------------------------------------------------------
@@ -202,9 +198,6 @@ void CNPC_CombineWallhammer::Spawn(void)
 
 	// Tactical variant: no grenades
 	m_iNumGrenades = 0;
-
-	// Investigation state
-	m_flNextInvestigateTime = 0.0f;
 
 
 	BaseClass::Spawn();
@@ -312,23 +305,11 @@ void CNPC_CombineWallhammer::BuildScheduleTestBits(void)
 			SetCustomInterruptCondition(COND_TOO_FAR_TO_ATTACK);
 		}
 	}
-
-	// Let sounds interrupt idle/alert/patrol schedules so he can go investigate.
-	// Only while off cooldown, otherwise a lingering sound would thrash the schedule.
-	if (wallhammer_investigate_enabled.GetBool() &&
-		(GetState() == NPC_STATE_IDLE || GetState() == NPC_STATE_ALERT) &&
-		!IsCurSchedule(SCHED_INVESTIGATE_SOUND, false) &&
-		gpGlobals->curtime >= m_flNextInvestigateTime)
-	{
-		SetCustomInterruptCondition(COND_HEAR_COMBAT);
-		SetCustomInterruptCondition(COND_HEAR_PLAYER);
-		SetCustomInterruptCondition(COND_HEAR_WORLD);
-	}
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Select aggressive charging schedule if outside close-quarters range,
-//			and go investigate sounds when idle/alert.
+// Purpose: Select aggressive charging schedule if outside close-quarters range.
+//			Falls through to CNPC_CombineHLABase, which handles sound investigation.
 //-----------------------------------------------------------------------------
 int CNPC_CombineWallhammer::SelectSchedule(void)
 {
@@ -340,61 +321,8 @@ int CNPC_CombineWallhammer::SelectSchedule(void)
 		}
 	}
 
-	int iInvestigate = SelectInvestigateSchedule();
-	if (iInvestigate != SCHED_NONE)
-		return iInvestigate;
-
 	return BaseClass::SelectSchedule();
 }
-
-//-----------------------------------------------------------------------------
-// Purpose: The stock Combine only investigates when it's in a squad AND is the
-//			member nearest to a SOUND_COMBAT sound. The Wallhammer is usually solo,
-//			so do it ourselves, and also react to player and world noises.
-//-----------------------------------------------------------------------------
-int CNPC_CombineWallhammer::SelectInvestigateSchedule(void)
-{
-	if (!wallhammer_investigate_enabled.GetBool())
-		return SCHED_NONE;
-
-	const NPC_STATE state = GetState();
-	if (state != NPC_STATE_IDLE && state != NPC_STATE_ALERT)
-		return SCHED_NONE;
-
-	if (GetEnemy() || IsInAScript() || IsOnFire())
-		return SCHED_NONE;
-
-	if (gpGlobals->curtime < m_flNextInvestigateTime)
-		return SCHED_NONE;
-
-	// Anything urgent is handled by the base class (take cover, flinch, etc.)
-	if (HasCondition(COND_HEAR_DANGER) || HasCondition(COND_HEAR_MOVE_AWAY) ||
-		HasCondition(COND_HEAR_PHYSICS_DANGER) ||
-		HasCondition(COND_LIGHT_DAMAGE) || HasCondition(COND_HEAVY_DAMAGE))
-		return SCHED_NONE;
-
-	if (!HasCondition(COND_HEAR_COMBAT) && !HasCondition(COND_HEAR_PLAYER) && !HasCondition(COND_HEAR_WORLD))
-		return SCHED_NONE;
-
-	CSound* pSound = GetBestSound(SOUND_COMBAT | SOUND_PLAYER | SOUND_WORLD);
-	if (!pSound)
-		return SCHED_NONE;
-
-	// Ignore our own noise and anything made by friends
-	CBaseEntity* pOwner = pSound->m_hOwner;
-	if (pOwner && (pOwner == this || IRelationType(pOwner) == D_LI))
-		return SCHED_NONE;
-
-	m_flNextInvestigateTime = gpGlobals->curtime + wallhammer_investigate_cooldown.GetFloat();
-
-	if (wallhammer_debug.GetBool())
-	{
-		DevMsg("Wallhammer: investigating sound (type %d)\n", pSound->m_iType);
-	}
-
-	return SCHED_INVESTIGATE_SOUND;
-}
-
 
 //-----------------------------------------------------------------------------
 // Purpose: Wallhammer logic. Runs inside the NPC's own AI think.

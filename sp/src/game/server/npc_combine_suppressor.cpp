@@ -10,7 +10,7 @@
 #include "ai_motor.h"
 #include "ai_squad.h"
 #include "npc_combine.h"
-#include "npc_combine_suppressor.h"
+#include "npc_combine_hla.h"
 #include "npcevent.h"
 #include "engine/IEngineSound.h"
 #include "soundent.h"
@@ -40,10 +40,6 @@ ConVar	suppressor_hold_time("suppressor_hold_time", "10", FCVAR_NONE, "Seconds h
 ConVar	suppressor_backup_range("suppressor_backup_range", "350", FCVAR_NONE, "A visible enemy closer than this makes him back away while firing. 0 = never back up.");
 ConVar	suppressor_backup_cooldown("suppressor_backup_cooldown", "0.75", FCVAR_NONE, "Minimum seconds between starting back-away moves.");
 ConVar	suppressor_backup_fail_delay("suppressor_backup_fail_delay", "3", FCVAR_NONE, "If backing away fails (cornered), seconds before he tries again. He stands and fires meanwhile.");
-
-ConVar	suppressor_investigate_enabled("suppressor_investigate_enabled", "1", FCVAR_NONE, "1 = Suppressor walks to investigate sounds (gunfire, player noise, world noise) from things he hasn't seen.");
-ConVar	suppressor_investigate_cooldown("suppressor_investigate_cooldown", "3", FCVAR_NONE, "Minimum seconds between starting investigations.");
-
 ConVar	suppressor_debug("suppressor_debug", "0", FCVAR_NONE, "1 = print burst/voice/damage info.");
 
 // ---------------------------------------------------------------------------
@@ -178,7 +174,6 @@ DEFINE_FIELD(m_bInBurst, FIELD_BOOLEAN),
 DEFINE_FIELD(m_flBurstEndTime, FIELD_TIME),
 DEFINE_FIELD(m_flNextBurstTime, FIELD_TIME),
 DEFINE_FIELD(m_flNextBackAwayTime, FIELD_TIME),
-DEFINE_FIELD(m_flNextInvestigateTime, FIELD_TIME),
 DEFINE_FIELD(m_flNextVoiceTime, FIELD_TIME),
 DEFINE_FIELD(m_flNextPainVoiceTime, FIELD_TIME),
 DEFINE_FIELD(m_flNextCombatIdleTime, FIELD_TIME),
@@ -216,9 +211,6 @@ void CNPC_CombineSuppressor::Spawn(void)
 	// Back-away state
 	m_flNextBackAwayTime = 0.0f;
 
-	// Investigation state
-	m_flNextInvestigateTime = 0.0f;
-
 	// Voice state
 	m_flNextVoiceTime = 0.0f;
 	m_flNextPainVoiceTime = 0.0f;
@@ -244,16 +236,10 @@ void CNPC_CombineSuppressor::Precache()
 {
 	PrecacheModel(SUPPRESSOR_MODEL);
 
-	// Voice lines (raw .wav paths, relative to the sound/ folder)
+	// Voice lines (soundscripts, see scripts/game_sounds_suppressor.txt)
 	for (int iSet = 0; iSet < SUPV_COUNT; iSet++)
 	{
-		const SuppressorVoiceSet_t& set = s_SupVoiceSets[iSet];
-		for (int i = 0; i < set.nCount; i++)
-		{
-			char szPath[256];
-			SuppressorBuildVoicePath(szPath, sizeof(szPath), set, set.pIndices[i]);
-			PrecacheSound(szPath);
-		}
+		PrecacheScriptSound(CFmtStr("Suppressor.%s", s_SupVoiceSets[iSet].pszPrefix));
 	}
 
 	BaseClass::Precache();
@@ -412,17 +398,6 @@ void CNPC_CombineSuppressor::BuildScheduleTestBits(void)
 		}
 	}
 
-	// Let sounds interrupt idle/alert/patrol schedules so he can go investigate.
-	// Only while off cooldown, otherwise a lingering sound would thrash the schedule.
-	if (suppressor_investigate_enabled.GetBool() &&
-		(GetState() == NPC_STATE_IDLE || GetState() == NPC_STATE_ALERT) &&
-		!IsCurSchedule(SCHED_INVESTIGATE_SOUND, false) &&
-		gpGlobals->curtime >= m_flNextInvestigateTime)
-	{
-		SetCustomInterruptCondition(COND_HEAR_COMBAT);
-		SetCustomInterruptCondition(COND_HEAR_PLAYER);
-		SetCustomInterruptCondition(COND_HEAR_WORLD);
-	}
 }
 
 //-----------------------------------------------------------------------------
@@ -434,9 +409,7 @@ int CNPC_CombineSuppressor::SelectSchedule(void)
 	if (iSuppress != SCHED_NONE)
 		return iSuppress;
 
-	int iInvestigate = SelectInvestigateSchedule();
-	if (iInvestigate != SCHED_NONE)
-		return iInvestigate;
+
 
 	return BaseClass::SelectSchedule();
 }
@@ -547,54 +520,6 @@ int CNPC_CombineSuppressor::SelectFailSchedule(int failedSchedule, int failedTas
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: The stock Combine only investigates when it's in a squad AND is the
-//			member nearest to a SOUND_COMBAT sound. React to combat, player and
-//			world noises ourselves.
-//-----------------------------------------------------------------------------
-int CNPC_CombineSuppressor::SelectInvestigateSchedule(void)
-{
-	if (!suppressor_investigate_enabled.GetBool())
-		return SCHED_NONE;
-
-	const NPC_STATE state = GetState();
-	if (state != NPC_STATE_IDLE && state != NPC_STATE_ALERT)
-		return SCHED_NONE;
-
-	if (GetEnemy() || IsInAScript() || IsOnFire())
-		return SCHED_NONE;
-
-	if (gpGlobals->curtime < m_flNextInvestigateTime)
-		return SCHED_NONE;
-
-	// Anything urgent is handled by the base class (take cover, flinch, etc.)
-	if (HasCondition(COND_HEAR_DANGER) || HasCondition(COND_HEAR_MOVE_AWAY) ||
-		HasCondition(COND_HEAR_PHYSICS_DANGER) ||
-		HasCondition(COND_LIGHT_DAMAGE) || HasCondition(COND_HEAVY_DAMAGE))
-		return SCHED_NONE;
-
-	if (!HasCondition(COND_HEAR_COMBAT) && !HasCondition(COND_HEAR_PLAYER) && !HasCondition(COND_HEAR_WORLD))
-		return SCHED_NONE;
-
-	CSound* pSound = GetBestSound(SOUND_COMBAT | SOUND_PLAYER | SOUND_WORLD);
-	if (!pSound)
-		return SCHED_NONE;
-
-	// Ignore our own noise and anything made by friends
-	CBaseEntity* pOwner = pSound->m_hOwner;
-	if (pOwner && (pOwner == this || IRelationType(pOwner) == D_LI))
-		return SCHED_NONE;
-
-	m_flNextInvestigateTime = gpGlobals->curtime + suppressor_investigate_cooldown.GetFloat();
-
-	if (suppressor_debug.GetBool())
-	{
-		DevMsg("Suppressor: investigating sound (type %d)\n", pSound->m_iType);
-	}
-
-	return SCHED_INVESTIGATE_SOUND;
-}
-
-//-----------------------------------------------------------------------------
 // Purpose: Keep him planted. The stock Combine runs to cover to reload, and
 //			drops its attack when low on ammo; the Suppressor does neither.
 //-----------------------------------------------------------------------------
@@ -674,26 +599,15 @@ bool CNPC_CombineSuppressor::PlayVoice(int iVoice, bool bForce)
 		return false;
 
 	const SuppressorVoiceSet_t& set = s_SupVoiceSets[iVoice];
-	int iPick = set.pIndices[random->RandomInt(0, set.nCount - 1)];
+	CFmtStr szSound("Suppressor.%s", set.pszPrefix);
 
-	char szPath[256];
-	SuppressorBuildVoicePath(szPath, sizeof(szPath), set, iPick);
-
-	CPASAttenuationFilter filter(this);
-
-	EmitSound_t params;
-	params.m_pSoundName = szPath;
-	params.m_nChannel = CHAN_VOICE;		// a new line replaces whatever he was saying
-	params.m_flVolume = 1.0f;
-	params.m_SoundLevel = SNDLVL_TALKING;
-
-	EmitSound(filter, entindex(), params);
+	EmitSound(szSound);
 
 	m_flNextVoiceTime = gpGlobals->curtime + suppressor_voice_min_gap.GetFloat();
 
 	if (suppressor_debug.GetBool())
 	{
-		DevMsg("Suppressor voice: %s\n", szPath);
+		DevMsg("Suppressor voice: %s\n", szSound.Access());
 	}
 
 	return true;

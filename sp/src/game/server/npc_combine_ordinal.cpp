@@ -16,7 +16,7 @@
 #include "ai_motor.h"
 #include "ai_squad.h"
 #include "npc_combine.h"
-#include "npc_combine_ordinal.h"
+#include "npc_combine_hla.h"
 #include "npcevent.h"
 #include "engine/IEngineSound.h"
 #include "soundent.h"

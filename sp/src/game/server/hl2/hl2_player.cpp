@@ -180,7 +180,7 @@ ConVar sv_disallow_zoom_fire("sv_disallow_zoom_fire", "1", FCVAR_REPLICATED);
 
 // Maximum suit value
 #ifdef EZ2
-ConVar sk_suit_maxarmor("sk_suit_maxarmor", "200", FCVAR_REPLICATED);
+ConVar sk_suit_maxarmor("sk_suit_maxarmor", "100", FCVAR_REPLICATED);
 ConVar sk_plr_dmg_kick( "sk_plr_dmg_kick", "5", FCVAR_REPLICATED );
 #else
 ConVar sk_suit_maxarmor("sk_suit_maxarmor", "100", FCVAR_REPLICATED);
@@ -1839,7 +1839,8 @@ void CHL2_Player::StartSprinting( void )
 {
 #ifdef EZ2
 	// Ignore when infinite sprint is active
-	if( sv_infinite_sprint_power.GetInt() != INFINITE_SPRINT_TRUE && m_HL2Local.m_flSuitPower < 10 )
+	if( m_HL2Local.m_flSuitPower < 10 )
+	//if( sv_infinite_sprint_power.GetInt() != INFINITE_SPRINT_TRUE && m_HL2Local.m_flSuitPower < 10 )
 #else
 	if( m_HL2Local.m_flSuitPower < 10 )
 #endif
@@ -1859,7 +1860,8 @@ void CHL2_Player::StartSprinting( void )
 
 #ifdef EZ2
 	// "True" infinite sprinting: Aux power continues to drain, but sprinting device is not added
-	if( sv_infinite_sprint_power.GetInt() != INFINITE_SPRINT_TRUE && !SuitPower_AddDevice( SuitDeviceSprint ) )
+	//if( sv_infinite_sprint_power.GetInt() != INFINITE_SPRINT_TRUE && !SuitPower_AddDevice( SuitDeviceSprint ) )
+	if (!SuitPower_AddDevice(SuitDeviceSprint))
 #else
 	if( !SuitPower_AddDevice( SuitDeviceSprint ) )
 #endif

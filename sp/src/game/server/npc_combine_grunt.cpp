@@ -19,7 +19,8 @@
 #include "ai_hull.h"
 #include "ai_squad.h"
 #include "npc_combine.h"
-#include "npc_combine_grunt.h"
+#include "npc_combine_hla.h"
+#include "soundent.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -38,6 +39,7 @@ ConVar	grunt_max_per_vip("grunt_max_per_vip", "4", FCVAR_NONE, "Max grunts assig
 ConVar	grunt_ordinal_bonus("grunt_ordinal_bonus", "800", FCVAR_NONE, "Distance bonus (units) given to an Ordinal when picking a VIP. Higher = Ordinal always wins.");
 ConVar	grunt_auto_squad("grunt_auto_squad", "1", FCVAR_NONE, "1 = join the VIP's squad (create one if needed) so the group shares enemy info.");
 ConVar	grunt_debug("grunt_debug", "0", FCVAR_NONE, "1 = print protectee assignment info.");
+ConVar grunt_investigate_leash("grunt_investigate_leash", "700", FCVAR_NONE, "A grunt guarding a VIP only investigates sounds within this distance of it. 0 = no limit.");
 
 static const char* s_pszVipClasses[] =
 {
@@ -165,6 +167,7 @@ CBaseEntity* CNPC_CombineGrunt::FindBestProtectee(bool bOrdinalOnly)
 	return pBest;
 }
 
+
 //-----------------------------------------------------------------------------
 // Purpose: Put us in the VIP's squad so we share enemy info and attack slots.
 //			Never steals a grunt out of a squad the mapper set up.
@@ -241,6 +244,16 @@ void CNPC_CombineGrunt::SetProtectee(CBaseEntity* pVip)
 			DevMsg("Grunt %s: no VIP to protect, back to normal AI\n", GetDebugName());
 		}
 	}
+}
+
+bool CNPC_CombineGrunt::ShouldInvestigateSound(CSound* pSound, CBaseEntity* pOwner)
+{
+	CBaseEntity* pVip = m_hProtectee.Get();
+	const float flLeash = grunt_investigate_leash.GetFloat();
+	if (!pVip || !pVip->IsAlive() || flLeash <= 0.0f)
+		return true;
+
+	return pVip->GetAbsOrigin().DistToSqr(pSound->GetSoundOrigin()) <= flLeash * flLeash;
 }
 
 //-----------------------------------------------------------------------------
