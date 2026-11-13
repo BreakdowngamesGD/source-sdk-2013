@@ -1,0 +1,16 @@
+"VertexlitGeneric"
+{
+	"$basetexture" "models/combine_soldier/combine_special_head2"
+
+	"$bumpmap" "models/combine_soldier/combine_special_head_normal"
+	"$phong" "1"
+	"$phongexponent" "10"
+	"$phongboost" "1"
+	"$phongfresnelranges" "[0.25 0.5 1]"
+
+	"$detail" "models/combine_soldier/combine_special_head2"
+	"$detailscale" "1"
+	"$detailblendfactor" "1.20"
+	"$detailblendmode" "5"
+}
+// Stolen from Missing Information

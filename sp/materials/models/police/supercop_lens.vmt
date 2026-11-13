@@ -1,0 +1,13 @@
+"VertexlitGeneric"
+{
+	"$basetexture" "models/fox/police/supercop_lens"
+//	"$envmap" "env_cubemap"
+//	"$envmaptint" "[0.5 0.5 0.5]"
+//	"$basealphaenvmapmask" 1
+	"$selfillum" 1
+
+	"$detail" "models/fox/police/metrocop_lens_detail"
+	"$detailscale" "1"
+	"$detailblendfactor" "1.20"
+	"$detailblendmode" "5"
+}

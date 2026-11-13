@@ -1,0 +1,11 @@
+"VertexlitGeneric"
+{
+	"$basetexture" "models\player\juggernaut_black\jager_gear"
+	"$bumpmap" "models\player\juggernaut_black\jager_gear_n"
+	"$nocull" 1
+ 	"$phong" "1"
+	"$phongexponent" "5"
+	"$phongboost"	".1"
+	"$phongfresnelranges"	"[ .2 .2 .2]"
+	"$selfillum" 1
+}

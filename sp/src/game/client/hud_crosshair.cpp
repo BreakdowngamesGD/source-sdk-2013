@@ -61,16 +61,19 @@ CHudCrosshair::~CHudCrosshair()
 {
 }
 
-void CHudCrosshair::ApplySchemeSettings( IScheme *scheme )
+void CHudCrosshair::ApplySchemeSettings(IScheme* scheme)
 {
-	BaseClass::ApplySchemeSettings( scheme );
+	BaseClass::ApplySchemeSettings(scheme);
 
-	m_pDefaultCrosshair = gHUD.GetIcon("crosshair_default");
-	SetPaintBackgroundEnabled( false );
+	m_pDefaultCrosshair = gHUD.GetIcon("plushair");
+	SetPaintBackgroundEnabled(false);
 
-    SetSize( ScreenWidth(), ScreenHeight() );
+	SetSize(ScreenWidth(), ScreenHeight());
 
-	SetForceStereoRenderToFrameBuffer( true );
+	SetForceStereoRenderToFrameBuffer(true);
+
+	// Initialize with the standard scheme color right away
+	m_clrCrosshair = scheme->GetColor("FgColor", Color(255, 255, 255, 255));
 }
 
 //-----------------------------------------------------------------------------
@@ -298,9 +301,13 @@ void CHudCrosshair::SetCrosshair( CHudTexture *texture, const Color& clr )
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Resets the crosshair back to the default
+// Purpose: Resets the crosshair back to the default universal icon using HL2 color
 //-----------------------------------------------------------------------------
 void CHudCrosshair::ResetCrosshair()
 {
-	SetCrosshair( m_pDefaultCrosshair, Color(255, 255, 255, 255) );
+	// Look up the standard HL2 HUD scheme color
+	vgui::IScheme* pScheme = vgui::scheme()->GetIScheme(vgui::scheme()->GetScheme("ClientScheme"));
+	Color clrHud = pScheme ? pScheme->GetColor("FgColor", Color(255, 255, 255, 255)) : Color(255, 255, 255, 255);
+
+	SetCrosshair(m_pDefaultCrosshair, clrHud);
 }

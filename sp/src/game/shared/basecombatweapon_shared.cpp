@@ -12,6 +12,7 @@
 #include "physics_saverestore.h"
 #include "datacache/imdlcache.h"
 #include "activitylist.h"
+#include "filesystem.h"
 
 // NVNT start extra includes
 #include "haptics/haptic_utils.h"
@@ -403,10 +404,24 @@ const FileWeaponInfo_t &CBaseCombatWeapon::GetWpnData( void ) const
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-const char *CBaseCombatWeapon::GetViewModel( int /*viewmodelindex = 0 -- this is ignored in the base class here*/ ) const
+const char* CBaseCombatWeapon::GetViewModel(int viewmodelindex) const
 {
-	return GetWpnData().szViewModel;
+	const char* pszModel = GetWpnData().szViewModel;
+
+	if (viewmodelindex == 0 && pszModel && Q_strnicmp(pszModel, "models/weapons/v_", 17) == 0)
+	{
+		static char szCModel[MAX_PATH];
+		Q_snprintf(szCModel, sizeof(szCModel), "models/weapons/c_%s", pszModel + 17);
+
+		if (filesystem->FileExists(szCModel, "GAME"))
+		{
+			return szCModel;
+		}
+	}
+
+	return pszModel;
 }
+
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -1504,15 +1519,32 @@ bool CBaseCombatWeapon::IsViewModelSequenceFinished( void )
 //-----------------------------------------------------------------------------
 void CBaseCombatWeapon::SetViewModel()
 {
-	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
-	if ( pOwner == NULL )
+	CBasePlayer* pOwner = ToBasePlayer(GetOwner());
+	if (pOwner == NULL)
 		return;
-	CBaseViewModel *vm = pOwner->GetViewModel( m_nViewModelIndex, false );
-	if ( vm == NULL )
+	CBaseViewModel* vm = pOwner->GetViewModel(m_nViewModelIndex, false);
+	if (vm == NULL)
 		return;
-	Assert( vm->ViewModelIndex() == m_nViewModelIndex );
-	vm->SetWeaponModel( GetViewModel( m_nViewModelIndex ), this );
+	Assert(vm->ViewModelIndex() == m_nViewModelIndex);
+	vm->SetWeaponModel(GetViewModel(m_nViewModelIndex), this);
+
+#ifndef CLIENT_DLL
+	CBaseViewModel* pHandVM = pOwner->GetViewModel(1);
+	if (pHandVM)
+	{
+		const char* pszVM = GetViewModel(0);
+		if (UsesHands() || (pszVM && Q_stristr(pszVM, "/c_") != NULL))
+		{
+			pHandVM->RemoveEffects(EF_NODRAW);
+		}
+		else
+		{
+			pHandVM->AddEffects(EF_NODRAW);
+		}
+	}
+#endif
 }
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Set the desired activity for the weapon and its viewmodel counterpart

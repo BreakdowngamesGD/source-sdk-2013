@@ -810,6 +810,9 @@ void CHL2_Player::Precache( void )
 {
 	BaseClass::Precache();
 
+	PrecacheModel("models/weapons/c_arms.mdl");
+
+
 	PrecacheScriptSound( "HL2Player.SprintNoPower" );
 	PrecacheScriptSound( "HL2Player.SprintStart" );
 	PrecacheScriptSound( "HL2Player.UseDeny" );
@@ -1721,6 +1724,20 @@ void CHL2_Player::Spawn(void)
 #endif
 #endif
 #endif
+
+	CBaseViewModel* pHandVM = GetViewModel(1);
+	if (!pHandVM)
+	{
+		CreateViewModel(1);
+		pHandVM = GetViewModel(1);
+	}
+
+	if (pHandVM)
+	{
+		pHandVM->SetModel("models/weapons/c_arms.mdl");
+		pHandVM->AddEffects(EF_BONEMERGE);
+	}
+
 
 	BaseClass::Spawn();
 

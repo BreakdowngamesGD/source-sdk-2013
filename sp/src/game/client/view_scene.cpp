@@ -160,27 +160,8 @@ void UpdateFullScreenDepthTexture( void )
 // The Convar is called each time the flashlight is toggled. Dirty... some would go as far to say FILTHY. - Breadman
 static void ScreenOver_f(void)
 {
-	IMaterial *pMaterial = materials->FindMaterial("Ezero/Mask_NvMap", TEXTURE_GROUP_OTHER, true);
-	//This is the texture we are going to use for the 'effect' - never use an ext on material files
-
-	{
-		static bool bDisplayed = false;
-
-		if (bDisplayed)
-		{
-			// turn it off
-			view->SetScreenOverlayMaterial(NULL);
-			CLocalPlayerFilter filter;
-		}
-		else
-		{
-			// turn it on
-			view->SetScreenOverlayMaterial(pMaterial);
-			CLocalPlayerFilter filter;
-		}
-
-		bDisplayed = !bDisplayed;
-	}
+	// NVG overlay disabled
+	//view->SetScreenOverlayMaterial(NULL);
 }
 // Setup the custom Convar so we can toggle this from the flashlight call.
-static ConCommand Ez_Nvg_On("Ez_Nvg_On", ScreenOver_f, "NVG Mode for Ezero");
+//static ConCommand Ez_Nvg_On("Ez_Nvg_On", ScreenOver_f, "NVG Mode for Ezero");

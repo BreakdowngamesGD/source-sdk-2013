@@ -19,6 +19,7 @@
 #include "iservervehicle.h"
 #include "items.h"
 #include "hl2_gamerules.h"
+#include "filesystem.h"
 #ifdef MAPBASE
 #include "grenade_frag.h"
 #include "mapbase/GlobalStrings.h"
@@ -118,8 +119,16 @@ ConVar	sk_metropolice_stitch_at_hitcount( "sk_metropolice_stitch_at_hitcount","1
 ConVar	sk_metropolice_stitch_behind_hitcount( "sk_metropolice_stitch_behind_hitcount","3");
 ConVar	sk_metropolice_stitch_along_hitcount( "sk_metropolice_stitch_along_hitcount","2");
 
+// Skinpack ConVar for Metropolice (0 = default, 1 = policeskinpack1, 2 = policeskinpack2, etc.)
+ConVar npc_metropolice_skinpack("npc_metropolice_skinpack", "0", FCVAR_ARCHIVE, "Sets the skin pack subfolder for Metropolice models.");
 
-ConVar	sk_metropolice_health( "sk_metropolice_health","0");
+// Health ConVar for Elite Metropolice units
+ConVar sk_metropolice_elite_health("sk_metropolice_elite_health", "126", FCVAR_NONE, "Health for Elite Metropolice units.");
+
+// Multiplier for Elite Metropolice health (1.4 = 40% increase over base health)
+ConVar sk_metropolice_elite_health_mult("sk_metropolice_elite_health_mult", "1.4", FCVAR_NONE, "Health multiplier for Elite Metropolice units.");
+
+ConVar	sk_metropolice_health( "sk_metropolice_health","90");
 ConVar	sk_metropolice_simple_health( "sk_metropolice_simple_health","26");
 ConVar	sk_metropolice_stitch_distance( "sk_metropolice_stitch_distance","1000");
 
@@ -768,33 +777,76 @@ bool CNPC_MetroPolice::OverrideMoveFacing( const AILocalMoveGoal_t &move, float 
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-void CNPC_MetroPolice::Precache( void )
+void CNPC_MetroPolice::Precache(void)
 {
-#ifdef MAPBASE
-	// It doesn't matter if we can't find models/police.mdl in the string pool because then we know this NPC doesn't have that model.
-	if ( GetModelName() == NULL_STRING || GetModelName() == FindPooledString("models/police.mdl") )
+#ifdef MAPBASE 
+	if (GetModelName() == NULL_STRING || GetModelName() == FindPooledString("models/police.mdl"))
 	{
+#endif 
+		if (HasSpawnFlags(SF_NPC_START_EFFICIENT))
+		{
+			SetModelName(AllocPooledString("models/police_cheaple.mdl"));
+		}
+		else
+		{
+			SetModelName(AllocPooledString("models/police.mdl"));
+		}
+#ifdef MAPBASE 
+	}
 #endif
-	if ( HasSpawnFlags( SF_NPC_START_EFFICIENT ) )
+
+	const char* pModelName = STRING(GetModelName());
+	const char* pszFileName = NULL;
+
+	// Extract just the filename
+	if (pModelName && pModelName[0])
 	{
-		SetModelName( AllocPooledString("models/police_cheaple.mdl" ) );
+		pszFileName = strrchr(pModelName, '/');
+		if (pszFileName)
+		{
+			pszFileName++; // Skip past slash
+		}
+		else
+		{
+			pszFileName = pModelName;
+		}
+	}
+
+	// 1. DETECT ELITE STATUS: Checks if filename starts with "police_eli" (10 characters)
+	if (pszFileName && Q_strnicmp(pszFileName, "police_eli", 10) == 0)
+	{
+		m_fIsElite = true;
 	}
 	else
 	{
-		SetModelName( AllocPooledString("models/police.mdl") );
+		m_fIsElite = false;
 	}
-#ifdef MAPBASE
+
+	// 2. Skinpack redirection: Dynamically routes the exact filename into the active skinpack folder
+	int iSkinPack = npc_metropolice_skinpack.GetInt();
+	if (iSkinPack > 0 && pszFileName && pszFileName[0])
+	{
+		char szSkinPackPath[512];
+		Q_snprintf(szSkinPackPath, sizeof(szSkinPackPath), "models/policeskinpack%d/%s", iSkinPack, pszFileName);
+
+		if (g_pFullFileSystem && g_pFullFileSystem->FileExists(szSkinPackPath))
+		{
+			SetModelName(AllocPooledString(szSkinPackPath));
+		}
+		else
+		{
+			DevWarning("Police skinpack model %s not found in pack %d, using default path.\n", pszFileName, iSkinPack);
+		}
 	}
-#endif
 
-	PrecacheModel( STRING( GetModelName() ) );
+	PrecacheModel(STRING(GetModelName()));
 
-	UTIL_PrecacheOther( "npc_manhack" );
+	UTIL_PrecacheOther("npc_manhack");
 
-	PrecacheScriptSound( "NPC_Metropolice.Shove" );
-	PrecacheScriptSound( "NPC_MetroPolice.WaterSpeech" );
-	PrecacheScriptSound( "NPC_MetroPolice.HidingSpeech" );
-	enginesound->PrecacheSentenceGroup( "METROPOLICE" );
+	PrecacheScriptSound("NPC_Metropolice.Shove");
+	PrecacheScriptSound("NPC_MetroPolice.WaterSpeech");
+	PrecacheScriptSound("NPC_MetroPolice.HidingSpeech");
+	enginesound->PrecacheSentenceGroup("METROPOLICE");
 
 	BaseClass::Precache();
 }
@@ -845,6 +897,7 @@ void CNPC_MetroPolice::Spawn( void )
 		AddSpawnFlags( SF_NPC_GAG );
 	}
 
+	// Assign health based on Simple Cop, Standard Cop, or Elite scaling
 	if (!m_bSimpleCops)
 	{
 		m_iHealth = sk_metropolice_health.GetFloat();
@@ -853,6 +906,14 @@ void CNPC_MetroPolice::Spawn( void )
 	{
 		m_iHealth = sk_metropolice_simple_health.GetFloat();
 	}
+
+	// If Elite, increase health by a 1.4x ratio
+	if (m_fIsElite)
+	{
+		m_iHealth *= sk_metropolice_elite_health_mult.GetFloat();
+	}
+
+	SetMaxHealth(m_iHealth);
 
 	m_flFieldOfView		= -0.2;// indicates the width of this NPC's forward view cone ( as a dotproduct result )
 	m_NPCState			= NPC_STATE_NONE;

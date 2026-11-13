@@ -29,7 +29,7 @@ public:
 #ifdef EZ
 	CFlashlightEffect( int nEntIndex = 0, flashlighttype type = FLASHLIGHT );
 #else
-	CFlashlightEffect(int nEntIndex = 0);
+	CFlashlightEffect(int nEntIndex = 0, flashlighttype type = FLASHLIGHT);
 #endif
 	virtual ~CFlashlightEffect();
 
@@ -42,7 +42,7 @@ public:
 	void SetFlashlightHandle( ClientShadowHandle_t Handle ) { m_FlashlightHandle = Handle;	}
 	
 #ifdef EZ
-	virtual bool IsNVG( void ) { return m_iFlashLightType == NVG; }
+	virtual bool IsNVG( void ) { return m_iFlashLightType == FLASHLIGHT; }
 #endif
 protected:
 

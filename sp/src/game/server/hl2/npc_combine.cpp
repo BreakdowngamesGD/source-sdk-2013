@@ -432,7 +432,6 @@ CNPC_Combine::CNPC_Combine()
 	m_vecTossVelocity = vec3_origin;
 #ifdef EZ
 	// For players who use npc_create
-	AddSpawnFlags( SF_COMBINE_COMMANDABLE | SF_COMBINE_REGENERATE );
 	m_iNumGrenades = 5;
 
 	m_bDontPickupWeapons = true;
@@ -513,16 +512,6 @@ void CNPC_Combine::Use(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE u
 
 //-----------------------------------------------------------------------------
 // 1upD - Determine if this NPC can be commanded
-//-----------------------------------------------------------------------------
-bool CNPC_Combine::IsCommandable()
-{
-	return HasSpawnFlags(SF_COMBINE_COMMANDABLE) || BaseClass::IsCommandable();
-}
-
-//-----------------------------------------------------------------------------
-// 1upD - Should this NPC always think?
-//		Combine soldiers always think if they are commandable.
-//		Thanks Blixibon!
 //-----------------------------------------------------------------------------
 bool CNPC_Combine::ShouldAlwaysThink()
 {
@@ -724,31 +713,6 @@ void CNPC_Combine::StopFollowSound()
 #endif
 
 //-----------------------------------------------------------------------------
-// 1upD	-	Add this soldier to the player's squad
-//			Based on Breadman's use function code
-//-----------------------------------------------------------------------------
-void CNPC_Combine::AddToPlayerSquad()
-{
-	if ( IsInPlayerSquad() )
-	{
-		// Already in the player's squad
-		return;
-	}
-
-	m_iszOriginalSquad = m_SquadName;
-	AddToSquad(AllocPooledString(PLAYER_SQUADNAME));
-
-	// Blixibon - If we have a manhack, update its squad status
-	if (m_hManhack != NULL)
-		m_pSquad->AddToSquad(m_hManhack.Get());
-
-	// Blixibon - Soldiers are much better at shooting if they don't have to account for this
-	CapabilitiesRemove( bits_CAP_NO_HIT_SQUADMATES );
-	
-	FixupPlayerSquad();
-}
-
-//-----------------------------------------------------------------------------
 // Blixibon	-	Perform squad fixup methods
 //				Based on 1upD and Breadman's AddToPlayerSquad and use function code, respectively
 //-----------------------------------------------------------------------------
@@ -875,14 +839,6 @@ void CNPC_Combine::RemoveFromPlayerSquad()
 	}
 
 	UpdateSquadGlow();
-}
-
-//-----------------------------------------------------------------------------
-// 1upD	-	Override PlayerAlly's ShouldRegenerateHealth() to check spawnflag
-//-----------------------------------------------------------------------------
-bool CNPC_Combine::ShouldRegenerateHealth(void)
-{
-	return HasSpawnFlags(SF_COMBINE_REGENERATE);
 }
 
 //-----------------------------------------------------------------------------
@@ -1877,25 +1833,69 @@ void CNPC_Combine::InputSetPoliceGoal( inputdata_t &inputdata )
 
 #ifdef EZ
 //-----------------------------------------------------------------------------
+// Only classes that return true from CanBePlayerSquadmate() (npc_soldat) can
+// be commanded, join the player squad, glow, regenerate, etc.
+//-----------------------------------------------------------------------------
+bool CNPC_Combine::IsCommandable()
+{
+	return CanBePlayerSquadmate() && (HasSpawnFlags(SF_COMBINE_COMMANDABLE) || BaseClass::IsCommandable());
+}
+
+bool CNPC_Combine::ShouldRegenerateHealth(void)
+{
+	return CanBePlayerSquadmate() && HasSpawnFlags(SF_COMBINE_REGENERATE);
+}
+
+//-----------------------------------------------------------------------------
+// 1upD	-	Add this soldier to the player's squad
+//			Based on Breadman's use function code
+//-----------------------------------------------------------------------------
+void CNPC_Combine::AddToPlayerSquad()
+{
+	if (!CanBePlayerSquadmate())
+		return;
+
+	if (IsInPlayerSquad())
+	{
+		// Already in the player's squad
+		return;
+	}
+
+	m_iszOriginalSquad = m_SquadName;
+	AddToSquad(AllocPooledString(PLAYER_SQUADNAME));
+
+	// Blixibon - If we have a manhack, update its squad status
+	if (m_hManhack != NULL)
+		m_pSquad->AddToSquad(m_hManhack.Get());
+
+	// Blixibon - Soldiers are much better at shooting if they don't have to account for this
+	CapabilitiesRemove(bits_CAP_NO_HIT_SQUADMATES);
+
+	FixupPlayerSquad();
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: Turn this Combine soldier into a player commandable soldier
 // 1upD
-// Input  : &inputdata - 
 //-----------------------------------------------------------------------------
-void CNPC_Combine::InputSetCommandable(inputdata_t & inputdata)
+void CNPC_Combine::InputSetCommandable(inputdata_t& inputdata)
 {
+	if (!CanBePlayerSquadmate())
+		return;
+
 	this->AddSpawnFlags(SF_COMBINE_COMMANDABLE);
 }
 
 //-----------------------------------------------------------------------------
 // Purpose: Turn this Combine soldier into a non-commandable soldier
 // 1upD
-// Input  : &inputdata - 
 //-----------------------------------------------------------------------------
-void CNPC_Combine::InputSetNonCommandable(inputdata_t & inputdata)
+void CNPC_Combine::InputSetNonCommandable(inputdata_t& inputdata)
 {
 	this->RemoveSpawnFlags(SF_COMBINE_COMMANDABLE);
 	RemoveFromPlayerSquad();
 }
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Enables manhack toss
@@ -2115,6 +2115,12 @@ void CNPC_Combine::Spawn( void )
 	m_flAlertPatrolTime			= 0;
 
 	m_flNextAltFireTime = gpGlobals->curtime;
+
+	// Non-squadmate Combine can't be placed in the player's squad via the Hammer squad name
+	if (!CanBePlayerSquadmate() && m_SquadName != NULL_STRING && FStrEq(STRING(m_SquadName), PLAYER_SQUADNAME))
+	{
+		m_SquadName = NULL_STRING;
+	}
 
 	NPCInit();
 

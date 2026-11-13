@@ -223,6 +223,9 @@ void CEZ2_Player::Precache( void )
 {
 	BaseClass::Precache();
 
+	PrecacheModel("models/weapons/c_arms.mdl");
+
+
 	PrecacheModel( "models/bad_cop.mdl" );
 	PrecacheScriptSound( "Player.Detonate" );
 	PrecacheScriptSound( "Player.DetonateFail" );
@@ -510,6 +513,19 @@ void CEZ2_Player::Spawn( void )
 		// Must do this here because PostConstructor() is called before save/restore,
 		// which causes duplicates to be created.
 		CreateNPCComponent();
+	}
+
+	CBaseViewModel* pHandVM = GetViewModel(1);
+	if (!pHandVM)
+	{
+		CreateViewModel(1);
+		pHandVM = GetViewModel(1);
+	}
+
+	if (pHandVM)
+	{
+		pHandVM->SetModel("models/weapons/c_arms.mdl");
+		pHandVM->AddEffects(EF_BONEMERGE);
 	}
 
 	BaseClass::Spawn();

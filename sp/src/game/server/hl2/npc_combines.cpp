@@ -24,6 +24,7 @@
 #include "hl2_gamerules.h"
 #include "gameweaponmanager.h"
 #include "vehicle_base.h"
+#include "filesystem.h" // Required for FileExists check
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -33,6 +34,9 @@ ConVar	sk_combine_s_kick( "sk_combine_s_kick","0");
 
 ConVar sk_combine_guard_health( "sk_combine_guard_health", "0");
 ConVar sk_combine_guard_kick( "sk_combine_guard_kick", "0");
+
+// 0 = Default Hammer model, 1 = combineskinpack1, 2 = combineskinpack2
+ConVar npc_combine_skinpack("npc_combine_skinpack", "0", FCVAR_ARCHIVE, "Sets the skin pack subfolder for Combine models.");
  
 // Whether or not the combine guard should spawn health on death
 ConVar combine_guard_spawn_health( "combine_guard_spawn_health", "1" );
@@ -99,13 +103,52 @@ void CNPC_CombineS::Spawn( void )
 //-----------------------------------------------------------------------------
 void CNPC_CombineS::Precache()
 {
-	const char *pModelName = STRING( GetModelName() );
+	if (!GetModelName() || GetModelName() == NULL_STRING)
+	{
+		SetModelName(MAKE_STRING("models/combine_soldier.mdl"));
+	}
 
+	const char* pModelName = STRING(GetModelName());
+	const char* pszFileName = NULL;
+
+	// Extract just the filename portion (e.g. "combine_soldier.mdl" or "combine_super_soldier.mdl")
+	if (pModelName && pModelName[0])
+	{
+		pszFileName = strrchr(pModelName, '/');
+		if (pszFileName)
+		{
+			pszFileName++; // Skip past the slash
+		}
+		else
+		{
+			pszFileName = pModelName;
+		}
+	}
+
+	int iSkinPack = npc_combine_skinpack.GetInt();
+	if (iSkinPack > 0 && pszFileName && pszFileName[0])
+	{
+		// Construct the target path in the skin pack folder
+		char szSkinPackPath[512];
+		Q_snprintf(szSkinPackPath, sizeof(szSkinPackPath), "models/combineskinpack%d/%s", iSkinPack, pszFileName);
+
+		// Check if the file actually exists in the filesystem before redirecting
+		if (g_pFullFileSystem && g_pFullFileSystem->FileExists(szSkinPackPath))
+		{
+			SetModelName(AllocPooledString(szSkinPackPath));
+			pModelName = STRING(GetModelName());
+		}
+		else
+		{
+			DevWarning("Skinpack model %s not found in pack %d, using default.\n", pszFileName, iSkinPack);
+		}
+	}
+
+	// Check elite status using the extracted filename so skinpacks don't break elites
 #ifdef MAPBASE
-	// Need to do this for dirt variant
-	if( !Q_strnicmp( pModelName, "models/combine_super_sold", 25 ) )
+	if (pszFileName && Q_strnicmp(pszFileName, "combine_super_sold", 18) == 0)
 #else
-	if( !Q_stricmp( pModelName, "models/combine_super_soldier.mdl" ) )
+	if (pszFileName && Q_stricmp(pszFileName, "combine_super_soldier.mdl") == 0)
 #endif
 	{
 		m_fIsElite = true;
@@ -115,16 +158,11 @@ void CNPC_CombineS::Precache()
 		m_fIsElite = false;
 	}
 
-	if( !GetModelName() )
-	{
-		SetModelName( MAKE_STRING( "models/combine_soldier.mdl" ) );
-	}
+	PrecacheModel(pModelName);
 
-	PrecacheModel( STRING( GetModelName() ) );
-
-	UTIL_PrecacheOther( "item_healthvial" );
-	UTIL_PrecacheOther( "weapon_frag" );
-	UTIL_PrecacheOther( "item_ammo_ar2_altfire" );
+	UTIL_PrecacheOther("item_healthvial");
+	UTIL_PrecacheOther("weapon_frag");
+	UTIL_PrecacheOther("item_ammo_ar2_altfire");
 
 	BaseClass::Precache();
 }

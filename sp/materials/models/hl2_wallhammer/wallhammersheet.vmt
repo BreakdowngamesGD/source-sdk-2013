@@ -1,0 +1,13 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/hl2_wallhammer/wallhammersheet"
+	"$bumpmap" "models/hl2_wallhammer/wallhammersheet_n"
+	"$envmap" "cubemap"
+	"$envmapmask" "models/hl2_wallhammer/wallhammersheet_n"
+	"$phong" 1
+	"$phongboost" "2"
+	"$halflambert" "1"
+	"$phongexponenttexture" "models/hl2_wallhammer/wallhammersheet"
+	"$phongalbedotint" "1"										
+	"$phongfresnelranges"	"[.1 .5 1.0]"
+}

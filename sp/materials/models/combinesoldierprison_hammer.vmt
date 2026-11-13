@@ -1,0 +1,38 @@
+"VertexLitGeneric"
+{
+        "$baseTexture" 		"models/combine_soldier/prisonhammer_shotgun"
+	"$surfaceprop" "flesh"
+//	"$selfillum" 1
+//	"$selfillumtint" "[1 1 2]"
+	"$model" 1
+	"$phong" 1
+	"$phongboost" "5"
+	"$halflambert" "1"
+	"$phongexponenttexture" "models/combine_soldier/combinesoldiersheet_pads_phong"
+	"$phongexponent" "1"
+	"$phongalbedotint" "1"										
+	"$phongfresnelranges"	"[.1 .5 1.0]"
+
+	"$normalmapalphaenvmapmask"	"1"
+//	"$envmaptint"	"[0.645 0.645 0.645]"
+	"$envmapfresnel"	"1"
+
+	"$rimlight" "1"						
+	"$rimlightexponent" "8"				
+	"$rimlightboost" "0.2"
+	"$rimmask" "1"
+
+	$detail "models/combine_soldier/blackbine_pads_shotgun_emis"
+        $detailscale 				1
+   	$detailblendfactor 			1.20
+   	$detailblendmode			5
+
+	"Proxies"
+	{
+		"IsNPC"
+		{
+			"scale" "1.0"
+			"resultvar" "$detailblendfactor"
+		}
+	}
+}

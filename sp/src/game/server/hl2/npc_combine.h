@@ -163,6 +163,8 @@ public:
 	void 			ClearFollowTarget();
 	// Added by 1upD - methods required for player squad behavior
 	virtual bool	IsCommandable(); // This should check the spawn flag
+	// Only classes that return true here can ever join the player's squad
+	virtual bool	CanBePlayerSquadmate() { return false; }
 	virtual bool	IsPlayerAlly(CBasePlayer *pPlayer = NULL) { return this->IsCommandable() || BaseClass::IsPlayerAlly(); } // If this NPC is commandable, it IS a player ally regardless of affiliation
 	virtual CAI_BaseNPC *GetSquadCommandRepresentative();
 	virtual void	GetSquadGoal();

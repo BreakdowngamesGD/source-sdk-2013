@@ -10,11 +10,14 @@
 #include "npc_husk_soldier.h"
 #include "ammodef.h"
 #include "IEffects.h"
+#include "filesystem.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
 // Husks generally use 90% of the original NPC's health
+
+extern ConVar npc_combine_skinpack;
 
 ConVar	sk_husk_soldier_health( "sk_husk_soldier_health", "90" ); // From 100
 ConVar	sk_husk_soldier_kick( "sk_husk_soldier_kick", "10" );
@@ -243,67 +246,109 @@ void CNPC_HuskSoldier::Precache()
 {
 	if (m_tHuskSoldierType > NUM_HUSK_SOLDIER_TYPES || m_tHuskSoldierType < HUSK_DEFAULT)
 	{
-		Warning( "%s has invalid soldier type (%i)\n", m_tHuskSoldierType );
+		Warning("%s has invalid soldier type (%i)\n", GetClassname(), m_tHuskSoldierType);
 		m_tHuskSoldierType = HUSK_SOLDIER;
 	}
 
-	if( !GetModelName() )
+	if (!GetModelName() || GetModelName() == NULL_STRING)
 	{
 		// Default models
 		if (m_tHuskSoldierType == HUSK_DEFAULT)
 		{
-			SetModelName( MAKE_STRING( g_HuskValues_DefaultModels[HUSK_SOLDIER] ) );
+			SetModelName(MAKE_STRING(g_HuskValues_DefaultModels[HUSK_SOLDIER]));
 		}
 		else
 		{
-			SetModelName( MAKE_STRING( g_HuskValues_DefaultModels[m_tHuskSoldierType] ) );
+			SetModelName(MAKE_STRING(g_HuskValues_DefaultModels[m_tHuskSoldierType]));
 		}
 	}
 
-	if (V_strncmp( STRING( GetModelName() ), "models/husks/husk_", 18 ) == 0)
+	// EZ2 variant path handling
+	if (V_strncmp(STRING(GetModelName()), "models/husks/husk_", 18) == 0)
 	{
-		const char *pszVariant = GetEZVariantString();
+		const char* pszVariant = GetEZVariantString();
 		if (pszVariant != NULL)
 		{
-			// If this is a default model, reassign it to the relevant E:Z variant
 			char szNewModelName[MAX_PATH];
-			V_snprintf( szNewModelName, sizeof( szNewModelName ), "models/husks/%s/%s", pszVariant, STRING( GetModelName() ) + 13 );
+			V_snprintf(szNewModelName, sizeof(szNewModelName), "models/husks/%s/%s", pszVariant, STRING(GetModelName()) + 13);
 
-			SetModelName( AllocPooledString( szNewModelName ) );
+			if (g_pFullFileSystem && g_pFullFileSystem->FileExists(szNewModelName))
+			{
+				SetModelName(AllocPooledString(szNewModelName));
+			}
 		}
 	}
 
-	int nModel = PrecacheModel( STRING( GetModelName() ) );
+	const char* pModelName = STRING(GetModelName());
+	const char* pszFileName = NULL;
 
-	if (m_tHuskSoldierType == HUSK_DEFAULT)
+	// Extract just the filename early (e.g. "husk_super_soldier.mdl")
+	if (pModelName && pModelName[0])
 	{
-		// Ascertain type from model
-		HuskSoldier_AscertainModelType( this, modelinfo->GetModel( nModel ), m_tHuskSoldierType);
+		pszFileName = strrchr(pModelName, '/');
+		if (pszFileName)
+		{
+			pszFileName++;
+		}
+		else
+		{
+			pszFileName = pModelName;
+		}
 	}
 
-	if (m_tHuskSoldierType == HUSK_ELITE)
+	// 1. CHECK FOR "super" IN THE FILENAME TO DETERMINE ELITE STATUS
+	if (pszFileName && Q_stristr(pszFileName, "super") != NULL)
 	{
+		m_tHuskSoldierType = HUSK_ELITE;
 		m_fIsElite = true;
 	}
 	else
 	{
 		m_fIsElite = false;
+
+		// If it's not a super unit and type is default, ascertain type normally from model keyvalues[cite: 1]
+		if (m_tHuskSoldierType == HUSK_DEFAULT)
+		{
+			int nTempModel = PrecacheModel(pModelName);
+			HuskSoldier_AscertainModelType(this, modelinfo->GetModel(nTempModel), m_tHuskSoldierType);
+		}
 	}
+
+	// 2. APPLY SKINPACK REDIRECTION
+	int iSkinPack = npc_combine_skinpack.GetInt();
+	if (iSkinPack > 0 && pszFileName && pszFileName[0])
+	{
+		char szSkinPackPath[512];
+		Q_snprintf(szSkinPackPath, sizeof(szSkinPackPath), "models/combineskinpack%d/%s", iSkinPack, pszFileName);
+
+		if (g_pFullFileSystem && g_pFullFileSystem->FileExists(szSkinPackPath))
+		{
+			SetModelName(AllocPooledString(szSkinPackPath));
+			pModelName = STRING(GetModelName());
+		}
+		else
+		{
+			DevWarning("Husk combine skinpack model %s not found in pack %d, using default path.\n", pszFileName, iSkinPack);
+		}
+	}
+
+	PrecacheModel(pModelName);
 
 	switch (m_tHuskSoldierType)
 	{
-		case HUSK_CHARGER:
-			PrecacheScriptSound( "NPC_HuskCharger.WeaponBash" );
-			// Fall through
+	case HUSK_CHARGER:
+		PrecacheScriptSound("NPC_HuskCharger.WeaponBash");
+		// Fall through
 
-		case HUSK_GRUNT:
-		case HUSK_ORDINAL:
-			PrecacheScriptSound( "NPC_HuskSoldier.HelmetBreak" );
+	case HUSK_GRUNT:
+	case HUSK_ORDINAL:
+		PrecacheScriptSound("NPC_HuskSoldier.HelmetBreak");
+		break;
 	}
 
-	UTIL_PrecacheOther( "item_healthvial" );
-	UTIL_PrecacheOther( "weapon_frag" );
-	UTIL_PrecacheOther( "item_ammo_ar2_altfire" );
+	UTIL_PrecacheOther("item_healthvial");
+	UTIL_PrecacheOther("weapon_frag");
+	UTIL_PrecacheOther("item_ammo_ar2_altfire");
 
 	BaseClass::Precache();
 }
