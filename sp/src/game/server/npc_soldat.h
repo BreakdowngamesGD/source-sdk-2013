@@ -68,6 +68,26 @@ enum SoldatAssaultPhase_t
 	SOLDAT_PHASE_PROBE,			// assault teams bound forward under covering fire
 	SOLDAT_PHASE_HOLD,			// probe stalled: go to ground, keep the position, support keeps firing
 	SOLDAT_PHASE_EXPLOIT,		// breach made: everyone in the assault element goes in
+	SOLDAT_PHASE_SWEEP,		// enemy gone to ground: assault element splits into pairs and searches round the last known position
+};
+
+// Hammer keyvalue "soldatpatrol" (choices): -1 "Default (npc_soldat_patrol)", 0 "Guard - never patrol", 1 "Patrol with the team"
+// A soldat with any ai_goal behaviour (assault / standoff / follow / lead), or in a script, is treated as guarding too.
+
+// What a station is for (see SetStation)
+enum SoldatStationKind_t
+{
+	SOLDAT_STATION_NONE = 0,
+	SOLDAT_STATION_PATROL,		// idle: slot in the patrol leader's formation
+	SOLDAT_STATION_COMBAT,		// fight: slot on the commander's skirmish line
+};
+
+enum SoldatFormation_t
+{
+	SOLDAT_FORM_LINE = 0,		// abreast, facing the enemy
+	SOLDAT_FORM_COLUMN,			// staggered file behind the leader
+	SOLDAT_FORM_WEDGE,			// arrowhead, leader at the tip
+	SOLDAT_FORM_CIRCLE,			// all-round at the halt
 };
 
 // was: class CNPC_Soldat : public CNPC_CombineS
@@ -95,6 +115,11 @@ public:
 	int				OnTakeDamage_Alive(const CTakeDamageInfo& info);
 	WeaponProficiency_t	CalcWeaponProficiency(CBaseCombatWeapon* pWeapon);
 	int				DrawDebugTextOverlays(void);
+	void			StartTask(const Task_t* pTask);		// patrol stations are walked, not run
+	int				SelectFailSchedule(int failedSchedule, int failedTask, AI_TaskFailureCode_t taskFailCode);
+
+	// Only the player decides who is in his squad (E on a soldat). Nothing in this class adds or removes anyone.
+	bool			InPlayerSquad();
 
 	// Russian voice (sound/vac_alife/ru/<voice>/<category>/NN.wav through
 	// the VAC_RU.<voice>.<category> soundscripts)
@@ -109,6 +134,10 @@ public:
 	void			StopFollowSound();
 
 	bool			PlayVoice(const char* pszCategory, bool bForce = false, float flGap = -1.0f);
+
+	// Medic: a hurt squadmate calls him over (see OnTakeDamage_Alive)
+	void			RequestHeal(CBaseEntity* pWho);
+	void			UpdateOnRemove(void);
 
 	// Called by the dying leader on his squadmates
 	void			OnLeaderLost(WeaponProficiency_t prof, float flStun);
@@ -174,11 +203,56 @@ private:
 	// voice
 	void			UpdateVoice();
 
+	// medic: hands medkits to the player (tossed item_healthkit), heals hurt squadmates directly
+	void			UpdateMedic();
+	CBaseEntity* FindHealTarget();
+	bool			MedicInRange(CBaseEntity* pTarget);
+	void			DoHeal(CBaseEntity* pTarget);
+	void			TossMedkit(CBaseEntity* pTarget);
+
+	// room clearing: assault element splits into pairs that approach from different sides, then enter in turn
+	void			UpdateSweep();
+	int				GetSweepSlot(CNPC_Soldat* pCmd, int* pnTeams, int* pSlot);
+	void			PlanSweep(CNPC_Soldat* pCmd, int iTeam, int nTeams, int iSlot);
+	Vector			SweepSnap(const Vector& vecPos);
+	void			SetSweepGoal(const Vector& vecPos);
+	void			ReleaseSweep();
+
 	// idle chatter
 	bool			IsRelaxed();
 	CNPC_Soldat* FindChatPartner();
 	void			UpdateIdleChatter();
 	void			UpdateChatReply();
+
+	// accuracy (role + skill + suppression, capped while shaken by the leader's death)
+	int				ComputeProficiency();
+
+	// player squad bookkeeping
+	void			UpdatePlayerSquadWatch();
+
+	// stations: a world position a man is told to hold (info_target + stock SCHED_TARGET_CHASE)
+	void			SetStation(const Vector& vecPos, int iKind, float flHold);
+	void			ClearStation();
+	void			UpdateStation();
+	bool			AtStation();
+	int				SelectStationSchedule(bool bSeen);			// combat
+	int				SelectPatrolStationSchedule();				// idle
+	Vector			ClampStation(const Vector& vecFrom, const Vector& vecRaw);
+	Vector			SnapToNode(const Vector& vecPos, bool* pbFound);
+
+	// combat formation (commander)
+	int				CollectAssault(CNPC_Soldat** pOut, int nMax);
+	void			AssignCombatStations(const Vector& vecEnemy);
+	void			BeginBound(const Vector& vecEnemy, int nAssault);
+
+	// idle team patrol
+	bool			HasMapDuty();
+	bool			CanPatrol();
+	CNPC_Soldat* FindPatrolLeader();
+	int				CollectPatrollers(CNPC_Soldat** pOut, int nMax);
+	void			UpdatePatrol();
+	void			LeaderPatrol();
+	bool			PickPatrolGoal();
 
 	// who he is
 	int				m_iRole;				// keyvalue "soldatrole"
@@ -240,11 +314,60 @@ private:
 	bool			m_bKillSpoken;
 	bool			m_bPrecached;
 
+	// medic state
+	EHANDLE			m_hHealTarget;
+	float			m_flNextHealCheckT;
+	float			m_flHealGiveUpT;
+	float			m_flNextHealKickT;
+	float			m_flNextHealPlayerT;
+	float			m_flNextHealAllyT;
+
+	// sweep state (commander keeps m_vecSweepCenter, everyone else reads it)
+	Vector			m_vecSweepCenter;
+	EHANDLE			m_hSearchPoint;			// info_target we send our follow behaviour to
+	Vector			m_vecSweepPt[3];		// approach, enter, far side
+	bool			m_bSweepActive;
+	int				m_iSweepStage;			// 0 approach, 1 enter, 2 push through, 3 done
+	int				m_iSweepTeam;
+	float			m_flSweepReachedT;
+	float			m_flSweepSuppressT;
+	float			m_flNextSweepThinkT;
+
 	// idle chatter state
 	float			m_flNextChatT;
 	float			m_flChatReplyT;			// >0 = I owe a reply at this time
 	EHANDLE			m_hChatPartner;
 	int				m_iChatLeft;			// further lines allowed after my next reply
+
+	// accuracy penalty after the leader falls
+	float			m_flShakenUntilT;
+	int				m_iShakenProf;
+	float			m_flNextSweepAllowedT;	// commander: no new sweep before this
+
+	bool			m_bWasInPlayerSquad;
+
+	// station
+	EHANDLE			m_hStationPt;
+	Vector			m_vecStation;
+	bool			m_bStation;
+	int				m_iStationKind;
+	float			m_flStationUntilT;		// expires unless the commander / patrol leader refreshes it
+	float			m_flStationBlockedT;	// path failed: ignore stations until then
+	float			m_flNextStationKickT;
+	float			m_flAdvanceM;			// metres ahead of the commander's line (bounding)
+	float			m_flFrontM;				// commander: furthest advance so far
+	bool			m_bBoundPending;		// commander: start the first bound of a probe
+
+	// patrol (state lives on the patrol leader)
+	int				m_iPatrol;				// keyvalue "soldatpatrol": -1 convar, 0 guard, 1 patrol
+	Vector			m_vecPatrolGoal;
+	Vector			m_vecPatrolDir;
+	bool			m_bPatrolMoving;
+	float			m_flPatrolRestUntilT;
+	float			m_flPatrolRestStartT;
+	float			m_flPatrolGiveUpT;
+	float			m_flNextPatrolThinkT;
+	int				m_iPatrolForm;
 };
 
 #endif // NPC_SOLDAT_H

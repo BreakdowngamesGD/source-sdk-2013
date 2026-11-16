@@ -167,7 +167,8 @@ static void SuppressorBuildVoicePath(char* pszOut, int nOutLen, const Suppressor
 }
 
 #define SUPPRESSOR_MODEL			"models/combine_suppressor.mdl"
-#define SUPPRESSOR_WEAPON			"weapon_css_m249"
+#define SUPPRESSOR_WEAPON			"weapon_cmg"
+// NOTE: per-trigger-pull burst length comes from the weapon (see sk_weapon_cmg_npc_burst_min/max).
 
 BEGIN_DATADESC(CNPC_CombineSuppressor)
 DEFINE_FIELD(m_bInBurst, FIELD_BOOLEAN),

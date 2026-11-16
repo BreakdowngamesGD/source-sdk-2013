@@ -69,6 +69,13 @@ public:
 	void		Spawn(void);
 	void		PrescheduleThink(void);
 
+#ifdef COMBINE_SOLDIER_USES_RESPONSE_SYSTEM
+	using CNPC_Combine::SpeakIfAllowed;	// keep the other overloads visible (the override below hides them otherwise)
+
+	// Combat voice: remaps the stock Combine concepts (TLK_CMB_*) to Metrocop concepts (TLK_COP_*)
+	virtual bool	SpeakIfAllowed(const char* concept, AI_CriteriaSet& modifiers, SentencePriority_t sentencepriority = SENTENCE_PRIORITY_NORMAL, SentenceCriteria_t sentencecriteria = SENTENCE_CRITERIA_IN_SQUAD);
+#endif
+
 	// Used by other grunts to spread themselves across VIPs
 	CBaseEntity* GetProtectee(void) { return m_hProtectee.Get(); }
 
@@ -84,6 +91,7 @@ private:
 	EHANDLE		m_hProtectee;
 	float		m_flNextProtecteeCheck;
 	float		m_flNextOrdinalCheck;
+	float		m_flNextAmmoCallT;
 };
 
 //=========================================================

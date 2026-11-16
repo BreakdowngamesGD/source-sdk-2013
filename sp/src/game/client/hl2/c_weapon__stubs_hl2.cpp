@@ -10,7 +10,19 @@
 #include "c_basehlcombatweapon.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "client_class.h"
+// memdbgon last
 #include "tier0/memdbgon.h"
+
+CON_COMMAND(cmg_classes, "List registered client classes for AR2/CMG")
+{
+	Msg("### client.dll built %s %s ###\n", __DATE__, __TIME__);
+	for (ClientClass* p = g_pClientClassHead; p; p = p->m_pNext)
+	{
+		if (Q_stristr(p->m_pNetworkName, "CMG") || Q_stristr(p->m_pNetworkName, "AR2"))
+			Msg("%s -> %s\n", p->m_pNetworkName, p->m_pRecvTable ? p->m_pRecvTable->GetName() : "(null)");
+	}
+}
 
 STUB_WEAPON_CLASS( cycler_weapon, WeaponCycler, C_BaseCombatWeapon );
 
@@ -23,9 +35,10 @@ STUB_WEAPON_CLASS( weapon_cubemap, WeaponCubemap, C_BaseCombatWeapon );
 STUB_WEAPON_CLASS( weapon_alyxgun, WeaponAlyxGun, C_HLSelectFireMachineGun );
 STUB_WEAPON_CLASS( weapon_citizenpackage, WeaponCitizenPackage, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_citizensuitcase, WeaponCitizenSuitcase, C_WeaponCitizenPackage );
+STUB_WEAPON_CLASS(weapon_ar2, WeaponAR2, C_HLMachineGun);
+STUB_WEAPON_CLASS(weapon_cmg, WeaponCMG, C_WeaponAR2);
 
 #ifndef HL2MP
-STUB_WEAPON_CLASS( weapon_ar2, WeaponAR2, C_HLMachineGun );
 STUB_WEAPON_CLASS( weapon_frag, WeaponFrag, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_rpg, WeaponRPG, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_pistol, WeaponPistol, C_BaseHLCombatWeapon );

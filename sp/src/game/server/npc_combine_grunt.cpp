@@ -39,6 +39,7 @@ ConVar	grunt_max_per_vip("grunt_max_per_vip", "4", FCVAR_NONE, "Max grunts assig
 ConVar	grunt_ordinal_bonus("grunt_ordinal_bonus", "800", FCVAR_NONE, "Distance bonus (units) given to an Ordinal when picking a VIP. Higher = Ordinal always wins.");
 ConVar	grunt_auto_squad("grunt_auto_squad", "1", FCVAR_NONE, "1 = join the VIP's squad (create one if needed) so the group shares enemy info.");
 ConVar	grunt_debug("grunt_debug", "0", FCVAR_NONE, "1 = print protectee assignment info.");
+ConVar	grunt_cop_voice("grunt_cop_voice", "1", FCVAR_NONE, "1 = grunts use Metrocop voice lines (TLK_COP_*) in place of the Combine soldier lines (TLK_CMB_*).");
 ConVar grunt_investigate_leash("grunt_investigate_leash", "700", FCVAR_NONE, "A grunt guarding a VIP only investigates sounds within this distance of it. 0 = no limit.");
 
 static const char* s_pszVipClasses[] =
@@ -53,8 +54,38 @@ static bool Grunt_IsOrdinal(CBaseEntity* pEnt)
 	return pEnt && FClassnameIs(pEnt, "npc_combine_ordinal");
 }
 
+// ---------------------------------------------------------------------------
+// Combine concept -> Metrocop concept. Anything not listed here (idle chatter, follow
+// / stop-follow, healing, surrender orders) keeps its stock Combine line.
+// ---------------------------------------------------------------------------
+struct GruntCopMap_t
+{
+	const char* pszCombine;
+	const char* pszCop;
+};
+
+static const GruntCopMap_t s_GruntCopMap[] =
+{
+	{ TLK_CMB_ANNOUNCE,		TLK_COP_TAKE_HIM_DOWN },	// about to open fire on a target that hasn't seen us
+	{ TLK_CMB_THROWGRENADE,	TLK_COP_THROWGRENADE },
+	{ TLK_CMB_PLAYERHIT,	TLK_COP_PLAYERHIT },
+	{ TLK_CMB_ENEMY,		TLK_COP_ENEMY },
+	{ TLK_CMB_KILLENEMY,	TLK_COP_KILLENEMY },
+	{ TLK_CMB_DANGER,		TLK_COP_DANGER },
+	{ TLK_CMB_ASSAULT,		TLK_COP_OVER_HERE },
+	{ TLK_CMB_FLANK,		TLK_COP_FLANK },
+	{ TLK_CMB_KICK,			TLK_COP_BACK_UP },
+	{ TLK_CMB_PAIN,			TLK_COP_PAIN },
+	{ TLK_CMB_DIE,			TLK_COP_DIE },
+	{ TLK_CMB_LOSTENEMY,	TLK_COP_LOSTENEMY },
+	{ TLK_CMB_REFINDENEMY,	TLK_COP_REFINDENEMY },
+	{ TLK_CMB_GOALERT,		TLK_COP_GO_ALERT },
+	{ TLK_CMB_MANDOWN,		TLK_COP_MANDOWN },
+};
+
 BEGIN_DATADESC(CNPC_CombineGrunt)
 DEFINE_FIELD(m_hProtectee, FIELD_EHANDLE),
+DEFINE_FIELD(m_flNextAmmoCallT, FIELD_TIME),
 DEFINE_FIELD(m_flNextProtecteeCheck, FIELD_TIME),
 DEFINE_FIELD(m_flNextOrdinalCheck, FIELD_TIME),
 END_DATADESC()
@@ -84,6 +115,7 @@ void CNPC_CombineGrunt::Spawn(void)
 	m_hProtectee = NULL;
 	m_flNextProtecteeCheck = 0.0f;
 	m_flNextOrdinalCheck = 0.0f;
+	m_flNextAmmoCallT = 0.0f;
 
 	// Everything else (model, health, kick, grenades) is stock combine_s
 	BaseClass::Spawn();
@@ -256,6 +288,30 @@ bool CNPC_CombineGrunt::ShouldInvestigateSound(CSound* pSound, CBaseEntity* pOwn
 	return pVip->GetAbsOrigin().DistToSqr(pSound->GetSoundOrigin()) <= flLeash * flLeash;
 }
 
+#ifdef COMBINE_SOLDIER_USES_RESPONSE_SYSTEM
+//-----------------------------------------------------------------------------
+// Purpose: Every Combine speech call ends up here (see npc_combine.h). Swap the
+//			Combine concept for its Metrocop equivalent, then let the stock code
+//			do the speaking. Needs Metrocop response rules that match this NPC.
+//-----------------------------------------------------------------------------
+bool CNPC_CombineGrunt::SpeakIfAllowed(const char* concept, AI_CriteriaSet& modifiers, SentencePriority_t sentencepriority, SentenceCriteria_t sentencecriteria)
+{
+	if (concept && grunt_cop_voice.GetBool())
+	{
+		for (int i = 0; i < ARRAYSIZE(s_GruntCopMap); i++)
+		{
+			if (FStrEq(concept, s_GruntCopMap[i].pszCombine))
+			{
+				concept = s_GruntCopMap[i].pszCop;
+				break;
+			}
+		}
+	}
+
+	return BaseClass::SpeakIfAllowed(concept, modifiers, sentencepriority, sentencecriteria);
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: Throttled VIP assignment. Everything else is stock combine_s.
 //-----------------------------------------------------------------------------
@@ -263,7 +319,27 @@ void CNPC_CombineGrunt::PrescheduleThink(void)
 {
 	BaseClass::PrescheduleThink();
 
-	if (!IsAlive() || !grunt_protect_enabled.GetBool())
+	if (!IsAlive())
+		return;
+
+#ifdef COMBINE_SOLDIER_USES_RESPONSE_SYSTEM
+	// Metrocops call out their ammo in combat; the stock soldier says nothing
+	if (grunt_cop_voice.GetBool() && GetState() == NPC_STATE_COMBAT && gpGlobals->curtime >= m_flNextAmmoCallT)
+	{
+		if (HasCondition(COND_NO_PRIMARY_AMMO))
+		{
+			m_flNextAmmoCallT = gpGlobals->curtime + 8.0f;
+			SpeakIfAllowed(TLK_COP_NOAMMO);
+		}
+		else if (HasCondition(COND_LOW_PRIMARY_AMMO))
+		{
+			m_flNextAmmoCallT = gpGlobals->curtime + 8.0f;
+			SpeakIfAllowed(TLK_COP_LOWAMMO);
+		}
+	}
+#endif
+
+	if (!grunt_protect_enabled.GetBool())
 		return;
 
 	if (gpGlobals->curtime < m_flNextProtecteeCheck)

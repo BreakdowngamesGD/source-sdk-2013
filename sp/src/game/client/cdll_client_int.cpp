@@ -943,10 +943,8 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 #endif
 #endif
 
-#ifdef EZ2
 	// For now, always use GamepadUI (overridden by -nogamepadui)
 	CommandLine()->AppendParm( "-gamepadui", NULL );
-#endif
 
 	// We aren't happy unless we get all of our interfaces.
 	// please don't collapse this into one monolithic boolean expression (impossible to debug)

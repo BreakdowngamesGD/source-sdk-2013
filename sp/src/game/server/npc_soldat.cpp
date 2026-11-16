@@ -8,6 +8,8 @@
 #include "ai_squad.h"
 #include "ai_memory.h"
 #include "ai_navigator.h"
+#include "ai_network.h"
+#include "ai_node.h"
 #include "soundent.h"
 #include "npcevent.h"
 #include "basecombatweapon.h"
@@ -62,7 +64,7 @@ ConVar npc_soldat_rally("npc_soldat_rally", "1", FCVAR_NONE, "1 = leaders steady
 ConVar npc_soldat_doctrine("npc_soldat_doctrine", "1", FCVAR_NONE, "1 = squads with a leader fight a deliberate assault: support-by-fire, probe in bounding teams, hold if stalled, exploit a breach. 0 = old per-role push logic.");
 ConVar npc_soldat_support_time("npc_soldat_support_time", "5", FCVAR_NONE, "Minimum seconds the support element fires before the assault teams step off.");
 ConVar npc_soldat_bound_time("npc_soldat_bound_time", "4", FCVAR_NONE, "Seconds each assault team moves before the next team takes its turn.");
-ConVar npc_soldat_breach_dist("npc_soldat_breach_dist", "12", FCVAR_NONE, "Metres: an assault man this close to the enemy position counts as a breach and the whole assault element goes in.");
+ConVar npc_soldat_breach_dist("npc_soldat_breach_dist", "6", FCVAR_NONE, "Metres: an assault man this close to a SEEN enemy position counts as a breach and the whole assault element goes in.");
 ConVar npc_soldat_hold_time("npc_soldat_hold_time", "8", FCVAR_NONE, "Minimum seconds a stalled probe holds ground before the leader tries again.");
 // Auto squad (keyvalue soldatautosquad overrides per soldat)
 ConVar npc_soldat_auto_squad("npc_soldat_auto_squad", "1", FCVAR_NONE, "1 = soldats with no squadname group up with nearby soldats. A map can opt a soldat out with soldatautosquad 0.");
@@ -73,12 +75,54 @@ bool npc_soldat_auto_squad_enabled() { return npc_soldat_auto_squad.GetBool(); }
 
 ConVar npc_soldat_exploit_time("npc_soldat_exploit_time", "12", FCVAR_NONE, "Seconds the assault element presses through a breach before the leader re-evaluates.");
 
+// Medic
+ConVar npc_soldat_medic_heal("npc_soldat_medic_heal", "1", FCVAR_NONE, "1 = the medic role hands medkits to the player and heals hurt squadmates.");
+ConVar npc_soldat_medic_range("npc_soldat_medic_range", "160", FCVAR_NONE, "Units: how close the medic gets before tossing the player a medkit (squadmates are healed from arm's length).");
+ConVar npc_soldat_medic_search("npc_soldat_medic_search", "1500", FCVAR_NONE, "Units: how far the medic looks for someone to heal.");
+ConVar npc_soldat_medic_player_missing("npc_soldat_medic_player_missing", "25", FCVAR_NONE, "Player must be missing at least this much health before the medic offers a kit.");
+ConVar npc_soldat_medic_player_delay("npc_soldat_medic_player_delay", "25", FCVAR_NONE, "Seconds between medkits for the player.");
+ConVar npc_soldat_medic_ally_pct("npc_soldat_medic_ally_pct", "0.6", FCVAR_NONE, "Squadmates at or below this health fraction get treated.");
+ConVar npc_soldat_medic_ally_amount("npc_soldat_medic_ally_amount", "30", FCVAR_NONE, "Health restored to a squadmate per treatment.");
+ConVar npc_soldat_medic_ally_delay("npc_soldat_medic_ally_delay", "15", FCVAR_NONE, "Seconds between treating squadmates.");
+ConVar npc_soldat_medic_throw_speed("npc_soldat_medic_throw_speed", "650", FCVAR_NONE, "Medkit toss speed.");
+extern ConVar sv_gravity;
+
+// Room clearing (squad sweep, runs under the assault doctrine)
+ConVar npc_soldat_sweep("npc_soldat_sweep", "1", FCVAR_NONE, "1 = when the enemy goes to ground the assault element splits into pairs, approaches from different sides and clears in turn. Needs npc_soldat_doctrine 1.");
+ConVar npc_soldat_sweep_after("npc_soldat_sweep_after", "5", FCVAR_NONE, "Seconds nobody in the squad has seen the enemy before the squad starts a sweep.");
+ConVar npc_soldat_sweep_time("npc_soldat_sweep_time", "30", FCVAR_NONE, "Seconds a sweep may run before the leader gives up and holds.");
+ConVar npc_soldat_sweep_approach("npc_soldat_sweep_approach", "9", FCVAR_NONE, "Metres from the last known position where each pair stacks up before going in.");
+ConVar npc_soldat_sweep_enter_delay("npc_soldat_sweep_enter_delay", "4", FCVAR_NONE, "Seconds between pairs going in (pair 1 enters after this, pair 2 after twice this, ...).");
+ConVar npc_soldat_sweep_dwell("npc_soldat_sweep_dwell", "3", FCVAR_NONE, "Seconds a pair checks each point before moving on.");
+
 // Idle chatter
 ConVar npc_soldat_chatter("npc_soldat_chatter", "1", FCVAR_NONE, "1 = relaxed soldats talk amongst themselves.");
 ConVar npc_soldat_chatter_range("npc_soldat_chatter_range", "12", FCVAR_NONE, "Metres: how close (and in view) two soldats must be to chat.");
 ConVar npc_soldat_chatter_min("npc_soldat_chatter_min", "7", FCVAR_NONE, "Minimum seconds between conversations.");
 ConVar npc_soldat_chatter_max("npc_soldat_chatter_max", "18", FCVAR_NONE, "Maximum seconds between conversations.");
 ConVar npc_soldat_chatter_lines("npc_soldat_chatter_lines", "3", FCVAR_NONE, "Max extra back-and-forth lines after the opener and first reply.");
+
+// Formations (combat stations assigned by the squad commander)
+ConVar npc_soldat_formations("npc_soldat_formations", "1", FCVAR_NONE, "1 = the commander gives the assault element stations: a skirmish line facing the enemy, leapfrogging forward in bounds. Needs npc_soldat_doctrine 1.");
+ConVar npc_soldat_formation_spacing("npc_soldat_formation_spacing", "3", FCVAR_NONE, "Metres between men in a formation.");
+ConVar npc_soldat_bound_distance("npc_soldat_bound_distance", "8", FCVAR_NONE, "Metres the moving team advances per bound.");
+
+// Idle team patrol
+ConVar npc_soldat_patrol("npc_soldat_patrol", "1", FCVAR_NONE, "1 = idle soldats patrol in teams (column / wedge on the move, all-round circle at the halt). A map can make one guard with soldatpatrol 0, or by giving him any ai_goal / script.");
+ConVar npc_soldat_patrol_solo("npc_soldat_patrol_solo", "0", FCVAR_NONE, "1 = a soldat with nobody to patrol with wanders on his own. 0 = he stands.");
+ConVar npc_soldat_patrol_range_min("npc_soldat_patrol_range_min", "15", FCVAR_NONE, "Metres: shortest patrol leg.");
+ConVar npc_soldat_patrol_range_max("npc_soldat_patrol_range_max", "45", FCVAR_NONE, "Metres: longest patrol leg.");
+ConVar npc_soldat_patrol_wait_min("npc_soldat_patrol_wait_min", "6", FCVAR_NONE, "Minimum seconds the team halts at a patrol point.");
+ConVar npc_soldat_patrol_wait_max("npc_soldat_patrol_wait_max", "14", FCVAR_NONE, "Maximum seconds the team halts at a patrol point.");
+ConVar npc_soldat_patrol_regroup("npc_soldat_patrol_regroup", "10", FCVAR_NONE, "Metres: the patrol leader waits for stragglers to be this close before the next leg.");
+ConVar npc_soldat_leader_down_duration("npc_soldat_leader_down_duration", "15", FCVAR_NONE, "Seconds the leader-down accuracy penalty lasts.");
+
+// The player's squad name (HL2 uses "player_squad"). Only the player decides who is in it.
+#ifdef PLAYER_SQUADNAME
+#define SOLDAT_PLAYER_SQUADNAME PLAYER_SQUADNAME
+#else
+#define SOLDAT_PLAYER_SQUADNAME "player_squad"
+#endif
 
 // ---------------------------------------------------------------------------
 // Roles. Weapons come from the weapon_css_* set (scripts/weapon_css_*.txt):
@@ -103,7 +147,7 @@ static const SoldatRoleDef_t s_Roles[SOLDAT_ROLE_COUNT] =
 {
 	{ "rifleman",	"weapon_css_ak47",		NULL,				2, 2 },
 	{ "leader",		"weapon_css_mp5navy",	"weapon_css_glock",	1, 2 },
-	{ "autorifle",	"weapon_css_sg552",		"weapon_css_glock",	1, 1 },
+	{ "autorifle",	"weapon_css_m249",		"weapon_css_glock",	1, 1 },
 	{ "grenadier",	"weapon_css_ak47",		NULL,				3, 2 },
 	{ "medic",		"weapon_css_tmp",		NULL,				1, 1 },
 	{ "marksman",	"weapon_css_ak47",		"weapon_css_glock",	1, 3 },
@@ -213,6 +257,7 @@ BEGIN_DATADESC(CNPC_Soldat)
 DEFINE_KEYFIELD(m_iRole, FIELD_INTEGER, "soldatrole"),
 DEFINE_KEYFIELD(m_iVoice, FIELD_INTEGER, "soldatvoice"),
 DEFINE_KEYFIELD(m_iAutoSquad, FIELD_INTEGER, "soldatautosquad"),
+DEFINE_KEYFIELD(m_iPatrol, FIELD_INTEGER, "soldatpatrol"),
 DEFINE_FIELD(m_flNextAutoSquadT, FIELD_TIME),
 DEFINE_FIELD(m_flNextCommandCheckT, FIELD_TIME),
 DEFINE_FIELD(m_flSkill, FIELD_FLOAT),
@@ -261,6 +306,43 @@ DEFINE_FIELD(m_flNextBoundT, FIELD_TIME),
 DEFINE_FIELD(m_vecStrongpoint, FIELD_POSITION_VECTOR),
 DEFINE_FIELD(m_nAssaultStart, FIELD_INTEGER),
 DEFINE_FIELD(m_bHasSupport, FIELD_BOOLEAN),
+DEFINE_FIELD(m_hHealTarget, FIELD_EHANDLE),
+DEFINE_FIELD(m_flNextHealCheckT, FIELD_TIME),
+DEFINE_FIELD(m_flHealGiveUpT, FIELD_TIME),
+DEFINE_FIELD(m_flNextHealKickT, FIELD_TIME),
+DEFINE_FIELD(m_flNextHealPlayerT, FIELD_TIME),
+DEFINE_FIELD(m_flNextHealAllyT, FIELD_TIME),
+DEFINE_FIELD(m_vecSweepCenter, FIELD_POSITION_VECTOR),
+DEFINE_FIELD(m_hSearchPoint, FIELD_EHANDLE),
+DEFINE_ARRAY(m_vecSweepPt, FIELD_POSITION_VECTOR, 3),
+DEFINE_FIELD(m_bSweepActive, FIELD_BOOLEAN),
+DEFINE_FIELD(m_iSweepStage, FIELD_INTEGER),
+DEFINE_FIELD(m_iSweepTeam, FIELD_INTEGER),
+DEFINE_FIELD(m_flSweepReachedT, FIELD_TIME),
+DEFINE_FIELD(m_flSweepSuppressT, FIELD_TIME),
+DEFINE_FIELD(m_flNextSweepThinkT, FIELD_TIME),
+DEFINE_FIELD(m_flShakenUntilT, FIELD_TIME),
+DEFINE_FIELD(m_iShakenProf, FIELD_INTEGER),
+DEFINE_FIELD(m_flNextSweepAllowedT, FIELD_TIME),
+DEFINE_FIELD(m_bWasInPlayerSquad, FIELD_BOOLEAN),
+DEFINE_FIELD(m_hStationPt, FIELD_EHANDLE),
+DEFINE_FIELD(m_vecStation, FIELD_POSITION_VECTOR),
+DEFINE_FIELD(m_bStation, FIELD_BOOLEAN),
+DEFINE_FIELD(m_iStationKind, FIELD_INTEGER),
+DEFINE_FIELD(m_flStationUntilT, FIELD_TIME),
+DEFINE_FIELD(m_flStationBlockedT, FIELD_TIME),
+DEFINE_FIELD(m_flNextStationKickT, FIELD_TIME),
+DEFINE_FIELD(m_flAdvanceM, FIELD_FLOAT),
+DEFINE_FIELD(m_flFrontM, FIELD_FLOAT),
+DEFINE_FIELD(m_bBoundPending, FIELD_BOOLEAN),
+DEFINE_FIELD(m_vecPatrolGoal, FIELD_POSITION_VECTOR),
+DEFINE_FIELD(m_vecPatrolDir, FIELD_VECTOR),
+DEFINE_FIELD(m_bPatrolMoving, FIELD_BOOLEAN),
+DEFINE_FIELD(m_flPatrolRestUntilT, FIELD_TIME),
+DEFINE_FIELD(m_flPatrolRestStartT, FIELD_TIME),
+DEFINE_FIELD(m_flPatrolGiveUpT, FIELD_TIME),
+DEFINE_FIELD(m_flNextPatrolThinkT, FIELD_TIME),
+DEFINE_FIELD(m_iPatrolForm, FIELD_INTEGER),
 END_DATADESC()
 
 //-----------------------------------------------------------------------------
@@ -305,6 +387,34 @@ CNPC_Soldat::CNPC_Soldat()
 	m_vecStrongpoint = vec3_origin;
 	m_nAssaultStart = 0;
 	m_bHasSupport = false;
+
+	m_hHealTarget = NULL;
+	m_flNextHealCheckT = m_flHealGiveUpT = m_flNextHealKickT = m_flNextHealPlayerT = m_flNextHealAllyT = 0.0f;
+
+	m_vecSweepCenter = vec3_origin;
+	m_hSearchPoint = NULL;
+	for (int i = 0; i < 3; i++)
+		m_vecSweepPt[i] = vec3_origin;
+	m_bSweepActive = false;
+	m_iSweepStage = m_iSweepTeam = 0;
+	m_flSweepReachedT = m_flSweepSuppressT = m_flNextSweepThinkT = 0.0f;
+
+	m_iPatrol = -1;		// -1 = npc_soldat_patrol convar, 0 = guard, 1 = patrol
+	m_flShakenUntilT = m_flNextSweepAllowedT = 0.0f;
+	m_iShakenProf = 0;
+	m_bWasInPlayerSquad = false;
+	m_hStationPt = NULL;
+	m_vecStation = vec3_origin;
+	m_bStation = false;
+	m_iStationKind = SOLDAT_STATION_NONE;
+	m_flStationUntilT = m_flStationBlockedT = m_flNextStationKickT = 0.0f;
+	m_flAdvanceM = m_flFrontM = 0.0f;
+	m_bBoundPending = false;
+	m_vecPatrolGoal = vec3_origin;
+	m_vecPatrolDir = Vector(1, 0, 0);
+	m_bPatrolMoving = false;
+	m_flPatrolRestUntilT = m_flPatrolRestStartT = m_flPatrolGiveUpT = m_flNextPatrolThinkT = 0.0f;
+	m_iPatrolForm = SOLDAT_FORM_COLUMN;
 
 	// What the Combine constructor used to do for everyone
 	if (npc_soldat_player_ally.GetBool())
@@ -485,6 +595,11 @@ void CNPC_Soldat::PrescheduleThink()
 	UpdateVoice();
 	UpdateChatReply();
 	UpdateIdleChatter();
+	UpdateMedic();
+	UpdateSweep();
+	UpdatePlayerSquadWatch();
+	UpdatePatrol();
+	UpdateStation();
 }
 
 void CNPC_Soldat::AddSuppression(float amount)
@@ -559,8 +674,7 @@ void CNPC_Soldat::UpdateFeelings(float dt)
 // aim by his skill and how hard he is pinned (sv_brain B.Fire's error terms)
 void CNPC_Soldat::UpdateProficiency()
 {
-	float score = (float)s_Roles[m_iRole].iBaseProf - (m_flSkill - 1.0f) * 2.5f - m_flSuppr * 2.0f;
-	int prof = SoldatClampI((int)floor(score + 0.5f), 0, 4);
+	int prof = ComputeProficiency();
 	if (prof == m_iLastProficiency)
 		return;
 	m_iLastProficiency = prof;
@@ -569,8 +683,7 @@ void CNPC_Soldat::UpdateProficiency()
 
 WeaponProficiency_t CNPC_Soldat::CalcWeaponProficiency(CBaseCombatWeapon* pWeapon)
 {
-	float score = (float)s_Roles[SoldatClampI(m_iRole, 0, SOLDAT_ROLE_COUNT - 1)].iBaseProf - (m_flSkill - 1.0f) * 2.5f - m_flSuppr * 2.0f;
-	return (WeaponProficiency_t)SoldatClampI((int)floor(score + 0.5f), 0, 4);
+	return (WeaponProficiency_t)ComputeProficiency();
 }
 
 //-----------------------------------------------------------------------------
@@ -643,7 +756,7 @@ void CNPC_Soldat::UpdateWeaponSwap()
 //-----------------------------------------------------------------------------
 void CNPC_Soldat::UpdateLeaderOrders()
 {
-	if (!IsLeaderRole() || !npc_soldat_orders.GetBool())
+	if (!IsLeaderRole() || !npc_soldat_orders.GetBool() || InPlayerSquad())
 		return;
 	if (GetState() != NPC_STATE_COMBAT)
 		return;
@@ -766,6 +879,8 @@ bool CNPC_Soldat::IssueAdvanceOrder()
 void CNPC_Soldat::OnLeaderLost(WeaponProficiency_t prof, float flStun)
 {
 	m_iTacticalVariant = SOLDAT_TACTICAL_DEFAULT;
+	m_flShakenUntilT = gpGlobals->curtime + npc_soldat_leader_down_duration.GetFloat();
+	m_iShakenProf = (int)prof;
 	SetCurrentWeaponProficiency(prof);
 	m_iLastProficiency = (int)prof;
 	m_flNextAttack = gpGlobals->curtime + flStun;
@@ -861,6 +976,9 @@ void CNPC_Soldat::HandleLeaderDown()
 
 void CNPC_Soldat::Event_Killed(const CTakeDamageInfo& info)
 {
+	m_hHealTarget = NULL;
+	ReleaseSweep();
+
 	if (IsLeaderRole() && npc_soldat_leader_down.GetBool())
 		HandleLeaderDown();
 
@@ -886,6 +1004,7 @@ int CNPC_Soldat::OnTakeDamage_Alive(const CTakeDamageInfo& info)
 			m_flNextMedicCallT = flNow + 12.0f;
 			PlayVoice("medic", true, 2.0f);
 			pMedic->PlayVoice("aid", true, 2.0f);
+			pMedic->RequestHeal(this);
 		}
 	}
 
@@ -1052,7 +1171,7 @@ int CNPC_Soldat::BackAway()
 // The leader (or acting leader) owns the phase; everybody else reads it.
 //   SUPPORT -> PROBE -> (HOLD -> SUPPORT ...) / EXPLOIT -> SUPPORT ...
 //-----------------------------------------------------------------------------
-static const char* s_pszPhaseNames[] = { "none", "support-by-fire", "probe", "hold", "exploit" };
+static const char* s_pszPhaseNames[] = { "none", "support-by-fire", "probe", "hold", "exploit", "sweep" };
 
 // Who commands when the leader is dead, or when the squad never had one: the first role
 // in this list that is still alive in the squad (ties go to squad order). Edit the order
@@ -1165,7 +1284,7 @@ void CNPC_Soldat::UpdateAutoSquad()
 	for (int i = 0; i < nCount; i++)
 	{
 		CNPC_Soldat* pS = dynamic_cast<CNPC_Soldat*>(pList[i]);
-		if (!pS || pS == this || !pS->IsAlive() || !pS->AutoSquadEnabled())
+		if (!pS || pS == this || !pS->IsAlive() || !pS->AutoSquadEnabled() || pS->InPlayerSquad())	// never merge into the player's squad
 			continue;
 
 		// same side only
@@ -1215,6 +1334,9 @@ void CNPC_Soldat::SetAssaultPhase(int iPhase)
 	if (iPhase == m_iAssaultPhase)
 		return;
 
+	if (iPhase == SOLDAT_PHASE_HOLD && m_iAssaultPhase == SOLDAT_PHASE_SWEEP)
+		m_flNextSweepAllowedT = gpGlobals->curtime + npc_soldat_hold_time.GetFloat() * 2.0f;	// a failed sweep holds a while before searching again
+
 	m_iAssaultPhase = iPhase;
 	m_flPhaseStartT = gpGlobals->curtime;
 
@@ -1222,10 +1344,11 @@ void CNPC_Soldat::SetAssaultPhase(int iPhase)
 	{
 		m_iBoundTeam = 0;
 		m_flNextBoundT = gpGlobals->curtime + npc_soldat_bound_time.GetFloat();
+		m_bBoundPending = true;
 	}
 
 	if (npc_soldat_debug.GetBool())
-		DevMsg("npc_soldat %s: assault phase -> %s\n", GetDebugName(), s_pszPhaseNames[SoldatClampI(iPhase, 0, SOLDAT_PHASE_EXPLOIT)]);
+		DevMsg("npc_soldat %s: assault phase -> %s\n", GetDebugName(), s_pszPhaseNames[SoldatClampI(iPhase, 0, SOLDAT_PHASE_SWEEP)]);
 }
 
 // which bounding team am I in (0..*pnTeams-1)? -1 if I'm not in the assault element
@@ -1268,7 +1391,16 @@ void CNPC_Soldat::UpdateAssaultPhase()
 
 	CBaseEntity* pEnemy = GetEnemy();
 
-	if (!npc_soldat_doctrine.GetBool() || !IsAlive() || m_bPanicking || GetState() != NPC_STATE_COMBAT ||
+	if (m_iAssaultPhase == SOLDAT_PHASE_SWEEP && !pEnemy)
+	{
+		// the enemy has dropped off our books but the pairs are still out searching: let them finish
+		if (!npc_soldat_doctrine.GetBool() || InPlayerSquad() || !IsAlive() || m_bPanicking || !GetSquad() || FindAssaultCommander() != this ||
+			now - m_flPhaseStartT >= npc_soldat_sweep_time.GetFloat())
+			SetAssaultPhase(SOLDAT_PHASE_NONE);
+		return;
+	}
+
+	if (!npc_soldat_doctrine.GetBool() || InPlayerSquad() || !IsAlive() || m_bPanicking || GetState() != NPC_STATE_COMBAT ||
 		!pEnemy || !pEnemy->IsAlive() || !GetSquad() || FindAssaultCommander() != this)
 	{
 		if (m_iAssaultPhase != SOLDAT_PHASE_NONE)
@@ -1281,6 +1413,23 @@ void CNPC_Soldat::UpdateAssaultPhase()
 	const Vector vecTarget = bSeen ? pEnemy->GetAbsOrigin() : GetEnemyLKP();
 	if (bSeen)
 		m_vecStrongpoint = vecTarget;
+
+	// has anybody in the squad got eyes on him, and how long since?
+	bool bSquadSeen = false;
+	float flSquadSinceSeen = FLT_MAX;
+	{
+		CAI_Squad* pSq = GetSquad();
+		AISquadIter_t it;
+		for (CAI_BaseNPC* q = pSq->GetFirstMember(&it); q; q = pSq->GetNextMember(&it))
+		{
+			if (!q->IsAlive())
+				continue;
+			if (q->HasCondition(COND_SEE_ENEMY))
+				bSquadSeen = true;
+			if (q->GetEnemy() == pEnemy)
+				flSquadSinceSeen = MIN(flSquadSinceSeen, now - q->GetEnemyLastTimeSeen());
+		}
+	}
 
 	// survey
 	int nAssault = 0, nSupport = 0, nSupportEngaged = 0;
@@ -1332,13 +1481,33 @@ void CNPC_Soldat::UpdateAssaultPhase()
 
 	const float flAvgSuppr = flSupprSum / (float)nAssault;
 	const int   nLosses = m_nAssaultStart - nAssault;
-	const bool  bBreach = flClosest < npc_soldat_breach_dist.GetFloat();
+	const bool  bBreach = (bSeen || bSquadSeen) && flClosest < npc_soldat_breach_dist.GetFloat();
 	const float flInPhase = now - m_flPhaseStartT;
+
+	// nobody can see him any more: stop pushing up the middle and send the assault element round to search
+	if (npc_soldat_sweep.GetBool() && nAssault >= 2 && !bBreach && flInPhase >= 2.0f &&
+		(m_iAssaultPhase == SOLDAT_PHASE_SUPPORT || m_iAssaultPhase == SOLDAT_PHASE_PROBE || m_iAssaultPhase == SOLDAT_PHASE_HOLD) &&
+		!bSquadSeen && flSquadSinceSeen > npc_soldat_sweep_after.GetFloat() && now >= m_flNextSweepAllowedT)
+	{
+		m_vecSweepCenter = GetEnemyLKP();
+		SetAssaultPhase(SOLDAT_PHASE_SWEEP);
+		AssignCombatStations(vecTarget);
+		PlayVoice("moving", true, 3.0f);
+		return;
+	}
 
 	switch (m_iAssaultPhase)
 	{
+	case SOLDAT_PHASE_SWEEP:
+		if (bSquadSeen)
+			SetAssaultPhase(SOLDAT_PHASE_SUPPORT);		// found him: fix him again
+		else if (flInPhase >= npc_soldat_sweep_time.GetFloat())
+			SetAssaultPhase(SOLDAT_PHASE_HOLD);			// nothing here: hold, the leader will try again
+		break;
+
 	case SOLDAT_PHASE_NONE:
 		// contact: fix him first
+		m_flFrontM = 0.0f;
 		m_nAssaultStart = nAssault;
 		SetAssaultPhase(SOLDAT_PHASE_SUPPORT);
 		break;
@@ -1352,7 +1521,7 @@ void CNPC_Soldat::UpdateAssaultPhase()
 			SetAssaultPhase(SOLDAT_PHASE_EXPLOIT);
 			PlayVoice("moving", true, 3.0f);
 		}
-		else if (flInPhase >= npc_soldat_support_time.GetFloat() && (nSupport == 0 || nSupportEngaged > 0) && flAvgSuppr < 0.5f)
+		else if (flInPhase >= npc_soldat_support_time.GetFloat() && (nSupport == 0 || nSupportEngaged > 0 || flInPhase >= npc_soldat_support_time.GetFloat() * 3.0f) && flAvgSuppr < 0.5f)
 		{
 			// the base of fire is working: step off
 			SetAssaultPhase(SOLDAT_PHASE_PROBE);
@@ -1373,10 +1542,14 @@ void CNPC_Soldat::UpdateAssaultPhase()
 			SetAssaultPhase(SOLDAT_PHASE_HOLD);
 			PlayVoice("hold", true, 3.0f);
 		}
-		else if (now >= m_flNextBoundT)
+		else if (m_bBoundPending || now >= m_flNextBoundT)
 		{
-			m_iBoundTeam++;
+			// next team steps off to a new station further forward; the others hold the line and fire
+			if (!m_bBoundPending)
+				m_iBoundTeam++;
+			m_bBoundPending = false;
 			m_flNextBoundT = now + npc_soldat_bound_time.GetFloat();
+			BeginBound(vecTarget, nAssault);
 		}
 		break;
 
@@ -1393,6 +1566,9 @@ void CNPC_Soldat::UpdateAssaultPhase()
 			SetAssaultPhase(SOLDAT_PHASE_SUPPORT);	// enemy still alive: re-assess
 		break;
 	}
+
+	// hand out (or clear) the formation stations for this phase
+	AssignCombatStations(vecTarget);
 }
 
 // What a man in the ASSAULT element does in the current phase. SCHED_NONE = stock AI
@@ -1404,6 +1580,15 @@ int CNPC_Soldat::SelectDoctrineSchedule(CNPC_Soldat* pCmd, bool bSeen, float flD
 
 	const float now = gpGlobals->curtime;
 	const bool  bReachable = !IsUnreachable(pEnemy);
+
+	// Formation: keep the station the commander assigned (run to it, then stand and shoot from it)
+	if (npc_soldat_formations.GetBool() && m_bStation && m_iStationKind == SOLDAT_STATION_COMBAT &&
+		(pCmd->m_iAssaultPhase == SOLDAT_PHASE_SUPPORT || pCmd->m_iAssaultPhase == SOLDAT_PHASE_PROBE || pCmd->m_iAssaultPhase == SOLDAT_PHASE_HOLD))
+	{
+		const int iStation = SelectStationSchedule(bSeen);
+		if (iStation != SCHED_NONE)
+			return iStation;
+	}
 
 	switch (pCmd->m_iAssaultPhase)
 	{
@@ -1579,7 +1764,7 @@ int CNPC_Soldat::SelectRoleSchedule()
 	// ---- Fire and manoeuvre: movers go forward while a base of fire pins the enemy
 	// ---- Squad doctrine: while the leader runs an assault, the phase decides what the assault
 	// element does. With no leader (or no phase running yet) the old autonomous push below applies.
-	CNPC_Soldat* pCmd = npc_soldat_doctrine.GetBool() ? FindAssaultCommander() : NULL;
+	CNPC_Soldat* pCmd = (npc_soldat_doctrine.GetBool() && !InPlayerSquad()) ? FindAssaultCommander() : NULL;
 	const bool bDoctrine = pCmd && pCmd->GetAssaultPhase() != SOLDAT_PHASE_NONE;
 	if (bDoctrine)
 	{
@@ -1759,6 +1944,25 @@ int CNPC_Soldat::SelectSchedule()
 			PlayVoice("panic", true);
 		}
 		return m_bPanicFlee ? SCHED_RUN_FROM_ENEMY : SCHED_COWER;
+	}
+
+	// the medic goes to whoever he is treating (the toss / treatment itself happens in UpdateMedic)
+	if (m_iRole == SOLDAT_ROLE_MEDIC && !IsInAScript())
+	{
+		CBaseEntity* pHeal = m_hHealTarget.Get();
+		if (pHeal && !MedicInRange(pHeal))
+		{
+			SetTarget(pHeal);
+			return SCHED_TARGET_CHASE;
+		}
+	}
+
+	// idle team patrol: walk to the station the patrol leader gave us (sounds, enemies and map duty win over it)
+	if (!IsInAScript() && !m_bPanicking)
+	{
+		const int iPatrol = SelectPatrolStationSchedule();
+		if (iPatrol != SCHED_NONE)
+			return iPatrol;
 	}
 
 	return BaseClass::SelectSchedule();
@@ -2121,10 +2325,1101 @@ int CNPC_Soldat::DrawDebugTextOverlays(void)
 		if (IsLeaderRole())
 		{
 			Q_snprintf(tempstr, sizeof(tempstr), "Assault: %s, bound team %d, support %s",
-				s_pszPhaseNames[SoldatClampI(m_iAssaultPhase, 0, SOLDAT_PHASE_EXPLOIT)], m_iBoundTeam, m_bHasSupport ? "yes" : "no");
+				s_pszPhaseNames[SoldatClampI(m_iAssaultPhase, 0, SOLDAT_PHASE_SWEEP)], m_iBoundTeam, m_bHasSupport ? "yes" : "no");
 			EntityText(text_offset, tempstr, 0);
 			text_offset++;
 		}
 	}
 	return text_offset;
+}
+
+
+//-----------------------------------------------------------------------------
+// Medic. Same split as npc_citizen: the player gets a medkit (here a tossed
+// item_healthkit he can pick up), squadmates are patched up directly.
+//-----------------------------------------------------------------------------
+static bool SoldatNeedsHealing(CBaseEntity* pT, bool bStart)
+{
+	if (!pT || !pT->IsAlive())
+		return false;
+
+	const int iMax = MAX(pT->GetMaxHealth(), 1);
+	const int iMissing = iMax - pT->GetHealth();
+
+	if (pT->IsPlayer())
+	{
+		CBasePlayer* pPlayer = ToBasePlayer(pT);
+		if (pPlayer && pPlayer->IsInAVehicle())
+			return false;
+		return iMissing >= (bStart ? npc_soldat_medic_player_missing.GetInt() : 10);
+	}
+
+	return (float)pT->GetHealth() / (float)iMax <= (bStart ? npc_soldat_medic_ally_pct.GetFloat() : 0.9f);
+}
+
+void CNPC_Soldat::RequestHeal(CBaseEntity* pWho)
+{
+	if (m_iRole != SOLDAT_ROLE_MEDIC || !npc_soldat_medic_heal.GetBool() || !IsAlive() || !pWho || pWho == this)
+		return;
+
+	CBaseEntity* pCur = m_hHealTarget.Get();
+	if (pCur && SoldatNeedsHealing(pCur, false))
+		return;		// busy
+
+	if (!SoldatNeedsHealing(pWho, false))
+		return;
+
+	m_hHealTarget = pWho;
+	m_flHealGiveUpT = gpGlobals->curtime + 15.0f;
+	m_flNextHealKickT = 0.0f;
+}
+
+bool CNPC_Soldat::MedicInRange(CBaseEntity* pTarget)
+{
+	const float flRange = pTarget->IsPlayer() ? npc_soldat_medic_range.GetFloat() : 96.0f;
+	return GetAbsOrigin().DistToSqr(pTarget->GetAbsOrigin()) <= flRange * flRange && FVisible(pTarget);
+}
+
+CBaseEntity* CNPC_Soldat::FindHealTarget()
+{
+	const float now = gpGlobals->curtime;
+	const float flSearch = npc_soldat_medic_search.GetFloat();
+
+	CBaseEntity* pBest = NULL;
+	float flBest = FLT_MAX;
+
+	// the player (most hurt first, with a small bonus)
+	CBasePlayer* pPlayer = AI_GetSinglePlayer();
+	if (pPlayer && now >= m_flNextHealPlayerT && IRelationType(pPlayer) == D_LI && SoldatNeedsHealing(pPlayer, true))
+	{
+		const float flDist = GetAbsOrigin().DistTo(pPlayer->GetAbsOrigin());
+		if (flDist <= flSearch && (flDist < 600.0f || FVisible(pPlayer)))
+		{
+			pBest = pPlayer;
+			flBest = (float)pPlayer->GetHealth() / (float)MAX(pPlayer->GetMaxHealth(), 1) - 0.15f + flDist / (flSearch * 4.0f);
+		}
+	}
+
+	// friends
+	if (now >= m_flNextHealAllyT)
+	{
+		CBaseEntity* pList[64];
+		const int nCount = UTIL_EntitiesInSphere(pList, ARRAYSIZE(pList), GetAbsOrigin(), flSearch, FL_NPC);
+
+		for (int i = 0; i < nCount; i++)
+		{
+			CAI_BaseNPC* pN = pList[i] ? pList[i]->MyNPCPointer() : NULL;
+			if (!pN || pN == this || !pN->IsAlive())
+				continue;
+			if (FClassnameIs(pN, "npc_manhack") || IRelationType(pN) != D_LI)
+				continue;
+			if (!SoldatNeedsHealing(pN, true))
+				continue;
+
+			// squadmates are always fair game, anybody else must be in sight
+			const bool bSquadmate = GetSquad() && pN->GetSquad() == GetSquad();
+			if (!bSquadmate && !FVisible(pN))
+				continue;
+
+			const float flDist = GetAbsOrigin().DistTo(pN->GetAbsOrigin());
+			const float flScore = (float)pN->GetHealth() / (float)MAX(pN->GetMaxHealth(), 1) + flDist / (flSearch * 4.0f);
+			if (flScore < flBest)
+			{
+				flBest = flScore;
+				pBest = pN;
+			}
+		}
+	}
+
+	return pBest;
+}
+
+void CNPC_Soldat::UpdateMedic()
+{
+	if (m_iRole != SOLDAT_ROLE_MEDIC || !npc_soldat_medic_heal.GetBool())
+		return;
+
+	const float now = gpGlobals->curtime;
+
+	if (!IsAlive() || m_bPanicking || IsInAScript() || IsOnFire() || (GetFlags() & FL_DISSOLVING))
+	{
+		m_hHealTarget = NULL;
+		return;
+	}
+
+	CBaseEntity* pTarget = m_hHealTarget.Get();
+	if (pTarget && !SoldatNeedsHealing(pTarget, false))
+	{
+		pTarget = NULL;
+		m_hHealTarget = NULL;
+	}
+
+	// pinned down: he doesn't run out into the open to hand out kits
+	const bool bPinned = (GetState() == NPC_STATE_COMBAT && m_flSuppr > 0.5f);
+
+	if (!pTarget)
+	{
+		if (now < m_flNextHealCheckT)
+			return;
+		m_flNextHealCheckT = now + 0.5f;
+
+		if (bPinned)
+			return;
+
+		pTarget = FindHealTarget();
+		if (!pTarget)
+			return;
+
+		m_hHealTarget = pTarget;
+		m_flHealGiveUpT = now + 15.0f;
+		m_flNextHealKickT = 0.0f;
+
+		if (npc_soldat_debug.GetBool())
+			DevMsg("npc_soldat %s: going to heal %s\n", GetDebugName(), pTarget->GetDebugName());
+	}
+
+	// arrived (or he walked up to us): treat
+	if (MedicInRange(pTarget))
+	{
+		DoHeal(pTarget);
+		m_hHealTarget = NULL;
+		m_flNextHealCheckT = now + 1.0f;
+		if (IsCurSchedule(SCHED_TARGET_CHASE, false))
+			ClearSchedule("Medic delivered");
+		return;
+	}
+
+	// pinned, or can't get there: give up for now
+	if (bPinned || now > m_flHealGiveUpT)
+	{
+		m_hHealTarget = NULL;
+		m_flNextHealCheckT = now + 4.0f;
+		if (IsCurSchedule(SCHED_TARGET_CHASE, false))
+			ClearSchedule("Medic gave up");
+		return;
+	}
+
+	// get moving: SelectSchedule hands out SCHED_TARGET_CHASE while m_hHealTarget is set
+	if (!IsCurSchedule(SCHED_TARGET_CHASE, false) && now >= m_flNextHealKickT)
+	{
+		m_flNextHealKickT = now + 1.0f;
+		SetTarget(pTarget);
+		ClearSchedule("Medic going to heal");
+	}
+}
+
+void CNPC_Soldat::DoHeal(CBaseEntity* pTarget)
+{
+	const float now = gpGlobals->curtime;
+
+	AddLookTarget(pTarget, 0.8f, 1.5f, 0.1f);
+
+	if (pTarget->IsPlayer())
+	{
+		TossMedkit(pTarget);
+		m_flNextHealPlayerT = now + npc_soldat_medic_player_delay.GetFloat();
+	}
+	else
+	{
+		pTarget->TakeHealth(npc_soldat_medic_ally_amount.GetFloat(), DMG_GENERIC);
+		pTarget->RemoveAllDecals();
+
+		CPASAttenuationFilter filter(pTarget, "HealthKit.Touch");
+		EmitSound(filter, pTarget->entindex(), "HealthKit.Touch");
+
+		m_flNextHealAllyT = now + npc_soldat_medic_ally_delay.GetFloat();
+	}
+
+	PlayVoice("aid", true, 2.0f);
+
+	if (npc_soldat_debug.GetBool())
+		DevMsg("npc_soldat %s: healed %s\n", GetDebugName(), pTarget->GetDebugName());
+}
+
+// Lob an item_healthkit at the player's feet (no VecCheckThrow dependency: simple ballistic arc)
+void CNPC_Soldat::TossMedkit(CBaseEntity* pTarget)
+{
+	Vector vecFwd;
+	GetVectors(&vecFwd, NULL, NULL);
+	const Vector vecStart = WorldSpaceCenter() + vecFwd * 20.0f;
+	const Vector vecDest = pTarget->GetAbsOrigin() + Vector(0, 0, 16);
+
+	const Vector vecDelta = vecDest - vecStart;
+	const float flSpeed = MAX(100.0f, npc_soldat_medic_throw_speed.GetFloat());
+	const float flTime = MAX(0.35f, vecDelta.Length2D() / flSpeed);
+
+	Vector vecVel = vecDelta / flTime;
+	vecVel.z += 0.5f * sv_gravity.GetFloat() * flTime;
+
+	CBaseEntity* pKit = CreateEntityByName("item_healthkit");
+	if (!pKit)
+		return;
+
+	pKit->SetAbsOrigin(vecStart);
+	pKit->SetOwnerEntity(this);
+	DispatchSpawn(pKit);
+
+	IPhysicsObject* pPhys = pKit->VPhysicsGetObject();
+	if (pPhys)
+	{
+		AngularImpulse angVel(RandomFloat(-200, 200), RandomFloat(-200, 200), RandomFloat(200, 600));
+		pPhys->SetVelocity(&vecVel, &angVel);
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Room clearing. The commander's SWEEP phase (UpdateAssaultPhase) marks the
+// last known position; every assault man then works out which pair he is in:
+//   * pairs approach from different bearings around the position (a pincer
+//     rather than everyone down the same corridor)
+//   * each pair stacks up at the approach point, covering
+//   * pairs go in one after another (npc_soldat_sweep_enter_delay), check the
+//     point, then push through to the far side
+//   * anybody seeing the enemy drops the route and fights; the commander
+//     puts the squad back to support-by-fire
+// Movement reuses the stock follow behaviour pointed at an info_target, so no
+// new schedules/tasks are needed. Support men, medic, RTO and the commander
+// stay where they are as overwatch / security.
+//-----------------------------------------------------------------------------
+int CNPC_Soldat::GetSweepSlot(CNPC_Soldat* pCmd, int* pnTeams, int* pSlot)
+{
+	int n = 0, mine = -1;
+
+	CAI_Squad* pSquad = GetSquad();
+	if (pSquad)
+	{
+		AISquadIter_t iter;
+		for (CAI_BaseNPC* p = pSquad->GetFirstMember(&iter); p; p = pSquad->GetNextMember(&iter))
+		{
+			CNPC_Soldat* pS = dynamic_cast<CNPC_Soldat*>(p);
+			if (!pS || pS == pCmd || !pS->IsAlive() || !pS->IsAssaultRole())
+				continue;
+			if (pS == this)
+				mine = n;
+			n++;
+		}
+	}
+
+	*pnTeams = MAX(1, (n + 1) / 2);
+	*pSlot = (mine < 0) ? 0 : (mine % 2);
+	return (mine < 0) ? -1 : (mine / 2);
+}
+
+// nearest ground node to a point (so the stack-up / entry points are somewhere walkable)
+Vector CNPC_Soldat::SweepSnap(const Vector& vecPos)
+{
+	CAI_Network* pNet = GetNavigator() ? GetNavigator()->GetNetwork() : NULL;
+	if (!pNet)
+		return vecPos;
+
+	const int iNode = pNet->NearestNodeToPoint(this, vecPos, false);
+	if (iNode < 0)
+		return vecPos;
+
+	CAI_Node* pNode = pNet->GetNode(iNode);
+	if (!pNode)
+		return vecPos;
+
+	const Vector vecNode = pNode->GetPosition(GetHullType());
+	if (vecNode.DistToSqr(vecPos) > Square(5.0f * SOLDAT_M2U))
+		return vecPos;
+
+	return vecNode;
+}
+
+void CNPC_Soldat::PlanSweep(CNPC_Soldat* pCmd, int iTeam, int nTeams, int iSlot)
+{
+	const Vector vecCenter = pCmd->m_vecSweepCenter;
+
+	// the way we came in: from the position back towards the commander
+	Vector vecDir = pCmd->GetAbsOrigin() - vecCenter;
+	vecDir.z = 0.0f;
+	if (VectorNormalize(vecDir) < 1.0f)
+		vecDir = Vector(1, 0, 0);
+
+	// spread the pairs +-60 degrees either side of that line
+	float flYaw = 0.0f;
+	if (nTeams > 1)
+		flYaw = -60.0f + 120.0f * (float)iTeam / (float)(nTeams - 1);
+
+	Vector vecApproachDir;
+	VectorYawRotate(vecDir, flYaw, vecApproachDir);
+
+	const Vector vecSide(-vecApproachDir.y, vecApproachDir.x, 0.0f);
+	const float flLat = (iSlot ? 1.0f : -1.0f) * 40.0f;		// the two men of a pair take either side of the door
+	const float flApproach = npc_soldat_sweep_approach.GetFloat() * SOLDAT_M2U;
+
+	m_vecSweepPt[0] = SweepSnap(vecCenter + vecApproachDir * flApproach + vecSide * flLat);
+	m_vecSweepPt[1] = SweepSnap(vecCenter + vecSide * flLat);
+	m_vecSweepPt[2] = SweepSnap(vecCenter - vecApproachDir * (flApproach * 0.6f) + vecSide * flLat);
+}
+
+void CNPC_Soldat::SetSweepGoal(const Vector& vecPos)
+{
+	CBaseEntity* pPt = m_hSearchPoint.Get();
+	if (!pPt)
+	{
+		pPt = CreateEntityByName("info_target");
+		if (!pPt)
+			return;
+		DispatchSpawn(pPt);
+		m_hSearchPoint = pPt;
+	}
+
+	if ((pPt->GetAbsOrigin() - vecPos).LengthSqr() > 1.0f)
+		UTIL_SetOrigin(pPt, vecPos, false);
+
+	if (m_FollowBehavior.GetFollowTarget() != pPt)
+	{
+		m_FollowBehavior.SetFollowTarget(pPt);
+		m_FollowBehavior.SetParameters(AIF_TIGHT);
+	}
+}
+
+void CNPC_Soldat::ReleaseSweep()
+{
+	CBaseEntity* pPt = m_hSearchPoint.Get();
+
+	// only drop the follow target if it is ours (the player may have ordered him to follow since)
+	if (pPt && m_FollowBehavior.GetFollowTarget() == pPt)
+		ClearFollowTarget();
+
+	m_hSearchPoint = NULL;
+	if (pPt)
+		UTIL_Remove(pPt);
+
+	m_bSweepActive = false;
+	m_iSweepStage = 0;
+	m_flSweepReachedT = 0.0f;
+}
+
+void CNPC_Soldat::UpdateOnRemove(void)
+{
+	CBaseEntity* pPt = m_hSearchPoint.Get();
+	if (pPt)
+		UTIL_Remove(pPt);
+	m_hSearchPoint = NULL;
+
+	CBaseEntity* pStation = m_hStationPt.Get();
+	if (pStation)
+		UTIL_Remove(pStation);
+	m_hStationPt = NULL;
+
+	BaseClass::UpdateOnRemove();
+}
+
+void CNPC_Soldat::UpdateSweep()
+{
+	const float now = gpGlobals->curtime;
+	if (now < m_flNextSweepThinkT)
+		return;
+	m_flNextSweepThinkT = now + 0.4f;
+
+	CNPC_Soldat* pCmd = (npc_soldat_doctrine.GetBool() && npc_soldat_sweep.GetBool() && !InPlayerSquad()) ? FindAssaultCommander() : NULL;
+	const bool bSweepOn = pCmd && pCmd != this && pCmd->GetAssaultPhase() == SOLDAT_PHASE_SWEEP;
+
+	if (!bSweepOn || !IsAlive() || !IsAssaultRole() || m_bPanicking || IsInAScript())
+	{
+		if (m_bSweepActive)
+			ReleaseSweep();
+		return;
+	}
+
+	// contact: stop walking and fight (the commander sends the squad back to support-by-fire)
+	if (HasCondition(COND_SEE_ENEMY))
+	{
+		if (m_bSweepActive)
+			ReleaseSweep();
+		m_flSweepSuppressT = now + 4.0f;
+		return;
+	}
+	if (now < m_flSweepSuppressT)
+		return;
+
+	CBaseEntity* pFollow = m_FollowBehavior.GetFollowTarget();
+
+	if (!m_bSweepActive)
+	{
+		// a soldat following the player (or an ordered position) isn't ours to send
+		if (pFollow && pFollow != m_hSearchPoint.Get())
+			return;
+
+		int nTeams = 1, iSlot = 0;
+		const int iTeam = GetSweepSlot(pCmd, &nTeams, &iSlot);
+		if (iTeam < 0)
+			return;
+
+		m_iSweepTeam = iTeam;
+		PlanSweep(pCmd, iTeam, nTeams, iSlot);
+		m_bSweepActive = true;
+		m_iSweepStage = 0;
+		m_flSweepReachedT = 0.0f;
+
+		if (npc_soldat_debug.GetBool())
+			DevMsg("npc_soldat %s: sweep, pair %d of %d, slot %d\n", GetDebugName(), iTeam + 1, nTeams, iSlot);
+	}
+	else if (pFollow && pFollow != m_hSearchPoint.Get())
+	{
+		// somebody gave him a follow order meanwhile
+		ReleaseSweep();
+		return;
+	}
+
+	// pair N goes in N * delay seconds after the sweep begins
+	const float flElapsed = now - pCmd->m_flPhaseStartT;
+	const float flEnterAt = npc_soldat_sweep_enter_delay.GetFloat() * (float)(1 + m_iSweepTeam);
+	if (m_iSweepStage == 0 && flElapsed >= flEnterAt)
+	{
+		m_iSweepStage = 1;
+		m_flSweepReachedT = 0.0f;
+		PlayVoice("moving", false, 4.0f);
+	}
+
+	const int iPt = SoldatClampI(m_iSweepStage, 0, 2);
+	SetSweepGoal(m_vecSweepPt[iPt]);
+
+	const Vector vecOff = GetAbsOrigin() - m_vecSweepPt[iPt];
+	const bool bAtGoal = vecOff.Length2D() < 160.0f && fabsf(vecOff.z) < 72.0f;
+
+	if (bAtGoal)
+	{
+		// check the corner
+		AddLookTarget(pCmd->m_vecSweepCenter + Vector(0, 0, 40), 0.6f, 1.0f, 0.1f);
+
+		if (m_iSweepStage >= 1 && m_iSweepStage < 3)
+		{
+			if (m_flSweepReachedT <= 0.0f)
+				m_flSweepReachedT = now;
+
+			if (now - m_flSweepReachedT >= npc_soldat_sweep_dwell.GetFloat())
+			{
+				m_iSweepStage++;
+				m_flSweepReachedT = 0.0f;
+				if (m_iSweepStage >= 3)
+					PlayVoice("clear", false, 4.0f);
+			}
+		}
+	}
+}
+
+//=============================================================================
+// Player squad
+//
+// The player alone decides who is in his squad (E on a soldat, handled by the
+// stock Combine code). Nothing in this class adds or removes anyone: auto-squad
+// ignores the player's squad in both directions, and every squad tactic below
+// (assault phases, advance orders, formations, patrol, sweep) skips soldats who
+// are in it, so the player's men do what the player says.
+//=============================================================================
+bool CNPC_Soldat::InPlayerSquad()
+{
+	CAI_Squad* pSquad = GetSquad();
+	return pSquad && !Q_stricmp(pSquad->GetName(), SOLDAT_PLAYER_SQUADNAME);
+}
+
+// Debug aid: with npc_soldat_debug 1, every join / leave is logged. If a soldat joins without you
+// pressing E, the culprit is stock Combine code, not this file - the log tells you when it happens.
+void CNPC_Soldat::UpdatePlayerSquadWatch()
+{
+	const bool bIn = InPlayerSquad();
+	if (bIn == m_bWasInPlayerSquad)
+		return;
+	m_bWasInPlayerSquad = bIn;
+
+	if (bIn)
+	{
+		// his orders now come from the player: drop any patrol / formation / sweep order
+		ClearStation();
+		m_bPatrolMoving = false;
+		if (m_bSweepActive)
+			ReleaseSweep();
+	}
+
+	if (npc_soldat_debug.GetBool())
+		DevMsg("npc_soldat %s: %s the player squad\n", GetDebugName(), bIn ? "joined" : "left");
+}
+
+//=============================================================================
+// Accuracy
+//=============================================================================
+int CNPC_Soldat::ComputeProficiency()
+{
+	const int iRole = SoldatClampI(m_iRole, 0, SOLDAT_ROLE_COUNT - 1);
+	const float score = (float)s_Roles[iRole].iBaseProf - (m_flSkill - 1.0f) * 2.5f - m_flSuppr * 2.0f;
+	int prof = SoldatClampI((int)floor(score + 0.5f), 0, 4);
+
+	// shaken by the leader's death: capped for a while (UpdateProficiency used to overwrite this at once)
+	if (gpGlobals->curtime < m_flShakenUntilT)
+		prof = MIN(prof, m_iShakenProf);
+
+	return prof;
+}
+
+//=============================================================================
+// Stations
+//
+// A station is a world position a man is told to hold. It is an info_target that
+// he chases with the stock SCHED_TARGET_CHASE (the same schedule the medic uses),
+// so no new schedules or tasks are needed. Stations expire after a moment unless
+// the commander / patrol leader keeps refreshing them, so a dead leader never
+// leaves men walking to stale positions.
+//=============================================================================
+Vector CNPC_Soldat::SnapToNode(const Vector& vecPos, bool* pbFound)
+{
+	if (pbFound)
+		*pbFound = false;
+
+	CAI_Network* pNet = GetNavigator() ? GetNavigator()->GetNetwork() : NULL;
+	if (!pNet)
+		return vecPos;
+
+	const int iNode = pNet->NearestNodeToPoint(this, vecPos, false);
+	if (iNode < 0)
+		return vecPos;
+
+	CAI_Node* pNode = pNet->GetNode(iNode);
+	if (!pNode)
+		return vecPos;
+
+	const Vector vecNode = pNode->GetPosition(GetHullType());
+	if (vecNode.DistToSqr(vecPos) > Square(4.0f * SOLDAT_M2U))
+		return vecPos;
+
+	if (pbFound)
+		*pbFound = true;
+	return vecNode;
+}
+
+// A formation slot that is not inside a wall and has floor under it. The slot is pulled back along the
+// line from vecFrom if a wall is in the way; with no floor at all the man just stays at vecFrom.
+Vector CNPC_Soldat::ClampStation(const Vector& vecFrom, const Vector& vecRaw)
+{
+	trace_t tr;
+	const Vector vecA = vecFrom + Vector(0, 0, 32);
+	Vector vecB = vecRaw + Vector(0, 0, 32);
+
+	UTIL_TraceLine(vecA, vecB, MASK_NPCSOLID_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr);
+	if (tr.fraction < 1.0f)
+	{
+		const Vector vecD = tr.endpos - vecA;
+		const float flLen = vecD.Length();
+		vecB = (flLen > 48.0f) ? vecA + vecD * ((flLen - 48.0f) / flLen) : vecA;
+	}
+
+	UTIL_TraceLine(vecB, vecB - Vector(0, 0, 160), MASK_NPCSOLID_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr);
+	if (tr.fraction < 1.0f && !tr.startsolid)
+		return tr.endpos + Vector(0, 0, 2);
+
+	return vecFrom;
+}
+
+void CNPC_Soldat::SetStation(const Vector& vecPos, int iKind, float flHold)
+{
+	m_vecStation = vecPos;
+	m_iStationKind = iKind;
+	m_flStationUntilT = gpGlobals->curtime + flHold;
+	m_bStation = true;
+
+	CBaseEntity* pPt = m_hStationPt.Get();
+	if (!pPt)
+	{
+		pPt = CreateEntityByName("info_target");
+		if (!pPt)
+		{
+			m_bStation = false;
+			return;
+		}
+		DispatchSpawn(pPt);
+		m_hStationPt = pPt;
+		UTIL_SetOrigin(pPt, vecPos, false);
+	}
+	else if ((pPt->GetAbsOrigin() - vecPos).LengthSqr() > Square(36.0f))
+	{
+		UTIL_SetOrigin(pPt, vecPos, false);
+	}
+}
+
+void CNPC_Soldat::ClearStation()
+{
+	if (!m_bStation)
+		return;
+
+	m_bStation = false;
+	m_iStationKind = SOLDAT_STATION_NONE;
+
+	// stop walking to a position nobody wants any more
+	CBaseEntity* pPt = m_hStationPt.Get();
+	if (pPt && GetTarget() == pPt && IsCurSchedule(SCHED_TARGET_CHASE, false))
+		ClearSchedule("Station cleared");
+}
+
+bool CNPC_Soldat::AtStation()
+{
+	const Vector vecOff = GetAbsOrigin() - m_vecStation;
+	return vecOff.Length2D() < 80.0f && fabsf(vecOff.z) < 72.0f;
+}
+
+void CNPC_Soldat::UpdateStation()
+{
+	if (!m_bStation)
+		return;
+
+	const float now = gpGlobals->curtime;
+
+	bool bDrop = (now > m_flStationUntilT) || !IsAlive() || m_bPanicking || IsInAScript() || InPlayerSquad();
+	if (m_iStationKind == SOLDAT_STATION_PATROL && !IsRelaxed())
+		bDrop = true;
+	if (m_iStationKind == SOLDAT_STATION_COMBAT && GetState() != NPC_STATE_COMBAT)
+		bDrop = true;
+
+	if (bDrop)
+	{
+		ClearStation();
+		return;
+	}
+
+	// The station moved while he was standing still (leader walked on, line stepped forward):
+	// an idle / holding schedule would not notice, so kick it.
+	if (now < m_flStationBlockedT || now < m_flNextStationKickT || AtStation() || IsCurSchedule(SCHED_TARGET_CHASE, false))
+		return;
+
+	const bool bHolding = IsCurSchedule(SCHED_IDLE_STAND, false) || IsCurSchedule(SCHED_ALERT_STAND, false) ||
+		IsCurSchedule(SCHED_COMBAT_STAND, false) || IsCurSchedule(SCHED_COMBAT_FACE, false) ||
+		IsCurSchedule(SCHED_RANGE_ATTACK1, false) || IsCurSchedule(SCHED_COMBINE_RANGE_ATTACK1, false);
+	if (!bHolding)
+		return;
+	if (m_iStationKind == SOLDAT_STATION_COMBAT && m_flSuppr >= 0.6f)
+		return;
+
+	m_flNextStationKickT = now + 1.0f;
+	ClearSchedule("Station moved");
+}
+
+// Combat: run to the station if not there; once there, stand and shoot (never wander off to cover on his own).
+int CNPC_Soldat::SelectStationSchedule(bool bSeen)
+{
+	if (!m_bStation || m_iStationKind != SOLDAT_STATION_COMBAT)
+		return SCHED_NONE;
+
+	// pinned down: the stock cover logic takes over, he rejoins the line when it is quieter
+	if (m_flSuppr >= 0.6f || gpGlobals->curtime < m_flStationBlockedT)
+		return SCHED_NONE;
+
+	CBaseEntity* pPt = m_hStationPt.Get();
+	if (!pPt)
+		return SCHED_NONE;
+
+	if (!AtStation())
+	{
+		SetTarget(pPt);
+		PlayVoice("moving", false, 5.0f);
+		return SCHED_TARGET_CHASE;
+	}
+
+	if (bSeen && HasCondition(COND_CAN_RANGE_ATTACK1) && OccupyStrategySlotRange(SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2))
+		return SCHED_RANGE_ATTACK1;
+
+	return SCHED_COMBAT_FACE;
+}
+
+// Idle: walk to the patrol slot. Sounds of combat, danger and damage go to the stock / investigate logic instead.
+int CNPC_Soldat::SelectPatrolStationSchedule()
+{
+	if (!m_bStation || m_iStationKind != SOLDAT_STATION_PATROL)
+		return SCHED_NONE;
+	if (!IsRelaxed() || gpGlobals->curtime < m_flStationBlockedT)
+		return SCHED_NONE;
+	if (HasCondition(COND_HEAR_COMBAT) || HasCondition(COND_HEAR_DANGER) || HasCondition(COND_HEAR_MOVE_AWAY) ||
+		HasCondition(COND_LIGHT_DAMAGE) || HasCondition(COND_HEAVY_DAMAGE))
+		return SCHED_NONE;
+
+	CBaseEntity* pPt = m_hStationPt.Get();
+	if (!pPt || AtStation())
+		return SCHED_NONE;
+
+	SetTarget(pPt);
+	return SCHED_TARGET_CHASE;
+}
+
+// Patrol stations are walked: swap the chase's run task for the stock walk task.
+void CNPC_Soldat::StartTask(const Task_t* pTask)
+{
+	if (pTask->iTask == TASK_RUN_PATH && m_bStation && m_iStationKind == SOLDAT_STATION_PATROL &&
+		IsCurSchedule(SCHED_TARGET_CHASE, false))
+	{
+		Task_t walk = *pTask;
+		walk.iTask = TASK_WALK_PATH;
+		BaseClass::StartTask(&walk);
+		return;
+	}
+
+	BaseClass::StartTask(pTask);
+}
+
+// A station he cannot path to: ignore stations for a moment; a patrol leader picks another goal.
+int CNPC_Soldat::SelectFailSchedule(int failedSchedule, int failedTask, AI_TaskFailureCode_t taskFailCode)
+{
+	if (failedSchedule == SCHED_TARGET_CHASE && m_bStation && GetTarget() == m_hStationPt.Get())
+	{
+		const float now = gpGlobals->curtime;
+		m_flStationBlockedT = now + 2.5f;
+
+		if (m_iStationKind == SOLDAT_STATION_PATROL && m_bPatrolMoving)
+		{
+			m_bPatrolMoving = false;
+			m_flPatrolRestStartT = now;
+			m_flPatrolRestUntilT = now + 1.0f;
+		}
+
+		if (npc_soldat_debug.GetBool())
+			DevMsg("npc_soldat %s: station unreachable\n", GetDebugName());
+	}
+
+	return BaseClass::SelectFailSchedule(failedSchedule, failedTask, taskFailCode);
+}
+
+//=============================================================================
+// Formations
+//
+// Slot offsets in the formation's own frame: fwd along the direction of travel / of the enemy,
+// lat to the right of it.
+//=============================================================================
+static void SoldatFormationSlot(int iForm, int idx, int n, float S, float& fwd, float& lat)
+{
+	switch (iForm)
+	{
+	case SOLDAT_FORM_LINE:
+		fwd = 0.0f;
+		lat = ((float)idx - 0.5f * (float)(n - 1)) * S;
+		break;
+
+	case SOLDAT_FORM_COLUMN:
+		fwd = -(float)(idx + 1) * S;
+		lat = ((idx & 1) ? 1.0f : -1.0f) * 0.35f * S;		// staggered file
+		break;
+
+	case SOLDAT_FORM_WEDGE:
+	{
+		const int row = idx / 2 + 1;
+		const float side = (idx & 1) ? 1.0f : -1.0f;
+		fwd = -(float)row * S * 0.9f;
+		lat = side * (float)row * S * 0.8f;
+		break;
+	}
+
+	default:	// CIRCLE: everyone faces outward round the leader
+	{
+		const float ang = DEG2RAD(360.0f * ((float)idx + 0.5f) / (float)MAX(n, 1));
+		const float r = S * 1.5f;
+		fwd = cosf(ang) * r;
+		lat = sinf(ang) * r;
+		break;
+	}
+	}
+}
+
+int CNPC_Soldat::CollectAssault(CNPC_Soldat** pOut, int nMax)
+{
+	CAI_Squad* pSquad = GetSquad();
+	if (!pSquad)
+		return 0;
+
+	int n = 0;
+	AISquadIter_t iter;
+	for (CAI_BaseNPC* p = pSquad->GetFirstMember(&iter); p && n < nMax; p = pSquad->GetNextMember(&iter))
+	{
+		CNPC_Soldat* pS = dynamic_cast<CNPC_Soldat*>(p);
+		if (!pS || !pS->IsAlive() || !pS->IsAssaultRole())
+			continue;
+		pOut[n++] = pS;		// same order as GetAssaultTeam, so index % nTeams is the man's bounding team
+	}
+	return n;
+}
+
+// Commander: one team steps forward to a new station, the rest keep theirs and cover.
+void CNPC_Soldat::BeginBound(const Vector& vecEnemy, int nAssault)
+{
+	CNPC_Soldat* men[16];
+	const int n = CollectAssault(men, 16);
+	if (n == 0)
+		return;
+
+	int nTeams = MAX(1, (nAssault + 2) / 3);
+	if (nAssault >= 2 && !m_bHasSupport)
+		nTeams = MAX(nTeams, 2);
+
+	const int iTeam = m_iBoundTeam % nTeams;
+	const float flDistM = (vecEnemy - GetAbsOrigin()).Length2D() / SOLDAT_M2U;
+	const float flMax = MAX(0.0f, flDistM - 10.0f);		// never bound onto the enemy
+
+	m_flFrontM = MIN(m_flFrontM + npc_soldat_bound_distance.GetFloat(), flMax);
+
+	for (int i = 0; i < n; i++)
+	{
+		if ((i % nTeams) == iTeam)
+			men[i]->m_flAdvanceM = m_flFrontM;
+	}
+
+	if (npc_soldat_debug.GetBool())
+		DevMsg("npc_soldat %s: bound, team %d of %d to +%.0f m\n", GetDebugName(), iTeam + 1, nTeams, m_flFrontM);
+}
+
+// Commander: hand the assault element their slots on a skirmish line facing the enemy. The line is
+// centred on the commander; a man whose team has bounded stands further forward than the others, so
+// the line visibly leapfrogs. Other phases (exploit, sweep, none) clear the stations.
+void CNPC_Soldat::AssignCombatStations(const Vector& vecEnemy)
+{
+	CNPC_Soldat* men[16];
+	const int n = CollectAssault(men, 16);
+
+	const int ph = m_iAssaultPhase;
+	const bool bFormation = npc_soldat_formations.GetBool() &&
+		(ph == SOLDAT_PHASE_SUPPORT || ph == SOLDAT_PHASE_PROBE || ph == SOLDAT_PHASE_HOLD);
+
+	if (!bFormation || n == 0)
+	{
+		for (int i = 0; i < n; i++)
+		{
+			if (men[i]->m_iStationKind == SOLDAT_STATION_COMBAT)
+				men[i]->ClearStation();
+		}
+		return;
+	}
+
+	Vector vecAdv = vecEnemy - GetAbsOrigin();
+	vecAdv.z = 0.0f;
+	if (VectorNormalize(vecAdv) < 1.0f)
+	{
+		GetVectors(&vecAdv, NULL, NULL);
+		vecAdv.z = 0.0f;
+		VectorNormalize(vecAdv);
+	}
+	const Vector vecRight(vecAdv.y, -vecAdv.x, 0.0f);
+	const float S = npc_soldat_formation_spacing.GetFloat() * SOLDAT_M2U;
+
+	for (int i = 0; i < n; i++)
+	{
+		// a fresh contact starts everybody level (front is 0), HOLD keeps what was gained
+		men[i]->m_flAdvanceM = MIN(men[i]->m_flAdvanceM, m_flFrontM);
+
+		float fwd, lat;
+		SoldatFormationSlot(SOLDAT_FORM_LINE, i, n, S, fwd, lat);
+		fwd += (1.5f + men[i]->m_flAdvanceM) * SOLDAT_M2U;
+
+		const Vector vecRaw = GetAbsOrigin() + vecAdv * fwd + vecRight * lat;
+		men[i]->SetStation(ClampStation(GetAbsOrigin(), vecRaw), SOLDAT_STATION_COMBAT, 1.5f);
+	}
+}
+
+//=============================================================================
+// Idle team patrol
+//
+// The best-ranked relaxed soldat in a squad (same succession list as the assault commander) is the
+// patrol leader. He picks a point 15-45 m away and walks to it; everyone else takes a slot in a
+// column or wedge round him as he goes, and in an all-round circle while he halts. He waits for
+// stragglers before the next leg. A soldat with map duty (soldatpatrol 0, an ai_goal behaviour,
+// a script), a sniper or a member of the player's squad never patrols and is never taken along.
+// Anything that stops being relaxed (sound of combat, enemy, damage) drops out of the patrol.
+//=============================================================================
+bool CNPC_Soldat::HasMapDuty()
+{
+	if (m_iPatrol == 0)
+		return true;		// the mapper said guard
+	if (IsInAScript())
+		return true;
+	if (GetRunningBehavior())
+		return true;		// assault / standoff / lead / func tank / follow goal from the map
+	return false;
+}
+
+bool CNPC_Soldat::CanPatrol()
+{
+	if (!npc_soldat_patrol.GetBool() || InPlayerSquad() || HasMapDuty())
+		return false;
+	if (m_iRole == SOLDAT_ROLE_SNIPER || m_iRole == SOLDAT_ROLE_HSNIPER)
+		return false;		// snipers hold their post
+	return IsRelaxed();
+}
+
+CNPC_Soldat* CNPC_Soldat::FindPatrolLeader()
+{
+	CAI_Squad* pSquad = GetSquad();
+	if (!pSquad)
+		return NULL;
+
+	CNPC_Soldat* pBest = NULL;
+	int iBestRank = 0x7FFFFFFF;
+
+	AISquadIter_t iter;
+	for (CAI_BaseNPC* p = pSquad->GetFirstMember(&iter); p; p = pSquad->GetNextMember(&iter))
+	{
+		CNPC_Soldat* pS = dynamic_cast<CNPC_Soldat*>(p);
+		if (!pS || !pS->CanPatrol())
+			continue;
+
+		const int iRank = SoldatCommandRank(pS->m_iRole);
+		if (iRank < iBestRank)
+		{
+			iBestRank = iRank;
+			pBest = pS;
+		}
+	}
+	return pBest;
+}
+
+int CNPC_Soldat::CollectPatrollers(CNPC_Soldat** pOut, int nMax)
+{
+	CAI_Squad* pSquad = GetSquad();
+	if (!pSquad)
+		return 0;
+
+	int n = 0;
+	AISquadIter_t iter;
+	for (CAI_BaseNPC* p = pSquad->GetFirstMember(&iter); p && n < nMax; p = pSquad->GetNextMember(&iter))
+	{
+		CNPC_Soldat* pS = dynamic_cast<CNPC_Soldat*>(p);
+		if (!pS || pS == this || !pS->CanPatrol())
+			continue;
+		pOut[n++] = pS;
+	}
+	return n;
+}
+
+bool CNPC_Soldat::PickPatrolGoal()
+{
+	const float flMin = npc_soldat_patrol_range_min.GetFloat();
+	const float flMax = MAX(flMin, npc_soldat_patrol_range_max.GetFloat());
+
+	for (int tries = 0; tries < 8; tries++)
+	{
+		Vector vecDir;
+		AngleVectors(QAngle(0, RandomFloat(0.0f, 360.0f), 0), &vecDir);
+
+		bool bFound = false;
+		const Vector vecGoal = SnapToNode(GetAbsOrigin() + vecDir * (RandomFloat(flMin, flMax) * SOLDAT_M2U), &bFound);
+		if (!bFound)
+			continue;
+
+		if ((vecGoal - GetAbsOrigin()).Length2D() < flMin * 0.5f * SOLDAT_M2U)
+			continue;
+
+		m_vecPatrolGoal = vecGoal;
+		return true;
+	}
+	return false;
+}
+
+void CNPC_Soldat::UpdatePatrol()
+{
+	const float now = gpGlobals->curtime;
+	if (now < m_flNextPatrolThinkT)
+		return;
+	m_flNextPatrolThinkT = now + 0.5f;
+
+	if (!CanPatrol())
+	{
+		m_bPatrolMoving = false;
+		if (m_iStationKind == SOLDAT_STATION_PATROL)
+			ClearStation();
+		return;
+	}
+
+	// followers are driven by the leader's stations
+	if (FindPatrolLeader() != this)
+	{
+		m_bPatrolMoving = false;
+		return;
+	}
+
+	LeaderPatrol();
+}
+
+void CNPC_Soldat::LeaderPatrol()
+{
+	const float now = gpGlobals->curtime;
+
+	CNPC_Soldat* men[16];
+	const int n = CollectPatrollers(men, 16);
+
+	if (n == 0 && !npc_soldat_patrol_solo.GetBool())
+	{
+		m_bPatrolMoving = false;
+		if (m_iStationKind == SOLDAT_STATION_PATROL)
+			ClearStation();
+		return;
+	}
+
+	float flFar = 0.0f;
+	for (int i = 0; i < n; i++)
+		flFar = MAX(flFar, (men[i]->GetAbsOrigin() - GetAbsOrigin()).Length2D() / SOLDAT_M2U);
+
+	const float flRegroup = npc_soldat_patrol_regroup.GetFloat();
+
+	if (m_bPatrolMoving)
+	{
+		const Vector vecOff = GetAbsOrigin() - m_vecPatrolGoal;
+		const bool bArrived = vecOff.Length2D() < 100.0f && fabsf(vecOff.z) < 72.0f;
+
+		if (bArrived || now > m_flPatrolGiveUpT)
+		{
+			// halt: the team forms a circle round him
+			m_bPatrolMoving = false;
+			m_flPatrolRestStartT = now;
+			m_flPatrolRestUntilT = now + RandomFloat(npc_soldat_patrol_wait_min.GetFloat(),
+				MAX(npc_soldat_patrol_wait_min.GetFloat(), npc_soldat_patrol_wait_max.GetFloat()));
+			ClearStation();
+		}
+		else if (flFar > flRegroup * 2.0f)
+		{
+			// don't outrun the team
+			ClearStation();
+		}
+		else
+		{
+			SetStation(m_vecPatrolGoal, SOLDAT_STATION_PATROL, 1.5f);
+		}
+	}
+	else if (now >= m_flPatrolRestUntilT)
+	{
+		const bool bRegrouped = (flFar < flRegroup) || (now - m_flPatrolRestStartT > 25.0f);
+
+		if (bRegrouped && PickPatrolGoal())
+		{
+			m_bPatrolMoving = true;
+			m_flPatrolGiveUpT = now + 45.0f;
+			m_iPatrolForm = (RandomFloat(0.0f, 1.0f) < 0.6f) ? SOLDAT_FORM_COLUMN : SOLDAT_FORM_WEDGE;
+			SetStation(m_vecPatrolGoal, SOLDAT_STATION_PATROL, 1.5f);
+			PlayVoice("moving", false, 6.0f);
+
+			if (npc_soldat_debug.GetBool())
+				DevMsg("npc_soldat %s: patrol leg, %d men, %s\n", GetDebugName(), n + 1,
+					m_iPatrolForm == SOLDAT_FORM_COLUMN ? "column" : "wedge");
+		}
+		else
+		{
+			m_flPatrolRestUntilT = now + 2.0f;	// not ready (stragglers / no goal): try again shortly
+		}
+	}
+
+	// the team's slots round the leader (heading = way to the goal, or the last heading at a halt)
+	if (m_bPatrolMoving)
+	{
+		Vector vecDir = m_vecPatrolGoal - GetAbsOrigin();
+		vecDir.z = 0.0f;
+		if (VectorNormalize(vecDir) > 1.0f)
+			m_vecPatrolDir = vecDir;
+	}
+
+	const int iForm = m_bPatrolMoving ? m_iPatrolForm : SOLDAT_FORM_CIRCLE;
+	const Vector vecRight(m_vecPatrolDir.y, -m_vecPatrolDir.x, 0.0f);
+	const float S = npc_soldat_formation_spacing.GetFloat() * SOLDAT_M2U;
+
+	for (int i = 0; i < n; i++)
+	{
+		float fwd, lat;
+		SoldatFormationSlot(iForm, i, n, S, fwd, lat);
+
+		const Vector vecRaw = GetAbsOrigin() + m_vecPatrolDir * fwd + vecRight * lat;
+		men[i]->SetStation(ClampStation(GetAbsOrigin(), vecRaw), SOLDAT_STATION_PATROL, 1.5f);
+	}
 }
