@@ -51,20 +51,20 @@
 class CNPC_Combine : public CNPC_PlayerCompanion
 {
 	DECLARE_DATADESC();
-	DECLARE_CLASS( CNPC_Combine, CNPC_PlayerCompanion );
+	DECLARE_CLASS(CNPC_Combine, CNPC_PlayerCompanion);
 #else
 #ifdef MAPBASE
 class CNPC_Combine : public CAI_GrenadeUser<CAI_BaseActor>
 {
 	DECLARE_DATADESC();
 	DEFINE_CUSTOM_AI;
-	DECLARE_CLASS( CNPC_Combine, CAI_GrenadeUser<CAI_BaseActor> );
+	DECLARE_CLASS(CNPC_Combine, CAI_GrenadeUser<CAI_BaseActor>);
 #else
 class CNPC_Combine : public CAI_BaseActor
 {
 	DECLARE_DATADESC();
 	DEFINE_CUSTOM_AI;
-	DECLARE_CLASS( CNPC_Combine, CAI_BaseActor );
+	DECLARE_CLASS(CNPC_Combine, CAI_BaseActor);
 #endif
 #endif
 
@@ -75,57 +75,57 @@ public:
 	virtual bool	CreateComponents();
 
 #ifndef MAPBASE // CAI_GrenadeUser
-	bool			CanThrowGrenade( const Vector &vecTarget );
-	bool			CheckCanThrowGrenade( const Vector &vecTarget );
+	bool			CanThrowGrenade(const Vector& vecTarget);
+	bool			CheckCanThrowGrenade(const Vector& vecTarget);
 #endif
-	virtual	bool	CanGrenadeEnemy( bool bUseFreeKnowledge = true );
-	virtual bool	CanAltFireEnemy( bool bUseFreeKnowledge );
-	int				GetGrenadeConditions( float flDot, float flDist );
-	int				RangeAttack2Conditions( float flDot, float flDist ); // For innate grenade attack
-	int				MeleeAttack1Conditions( float flDot, float flDist ); // For kick/punch
-	bool			FVisible( CBaseEntity *pEntity, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL );
-	bool			FVisible( const Vector &vecTarget, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL ) { return BaseClass::FVisible( vecTarget, traceMask, ppBlocker ); }
+	virtual	bool	CanGrenadeEnemy(bool bUseFreeKnowledge = true);
+	virtual bool	CanAltFireEnemy(bool bUseFreeKnowledge);
+	int				GetGrenadeConditions(float flDot, float flDist);
+	int				RangeAttack2Conditions(float flDot, float flDist); // For innate grenade attack
+	int				MeleeAttack1Conditions(float flDot, float flDist); // For kick/punch
+	bool			FVisible(CBaseEntity* pEntity, int traceMask = MASK_BLOCKLOS, CBaseEntity** ppBlocker = NULL);
+	bool			FVisible(const Vector& vecTarget, int traceMask = MASK_BLOCKLOS, CBaseEntity** ppBlocker = NULL) { return BaseClass::FVisible(vecTarget, traceMask, ppBlocker); }
 #ifdef EZ2
-	void			OnSeeEntity( CBaseEntity *pEntity );
+	void			OnSeeEntity(CBaseEntity* pEntity);
 #endif
 	virtual bool	IsCurTaskContinuousMove();
 
-	virtual float	GetJumpGravity() const		{ return 1.8f; }
+	virtual float	GetJumpGravity() const { return 1.8f; }
 
-	virtual Vector  GetCrouchEyeOffset( void );
+	virtual Vector  GetCrouchEyeOffset(void);
 
 #ifdef MAPBASE
-	virtual bool	IsCrouchedActivity( Activity activity );
+	virtual bool	IsCrouchedActivity(Activity activity);
 #endif
 
-	void Event_Killed( const CTakeDamageInfo &info );
+	void Event_Killed(const CTakeDamageInfo& info);
 #ifdef EZ
-	void Event_KilledOther( CBaseEntity *pVictim, const CTakeDamageInfo &info );
+	void Event_KilledOther(CBaseEntity* pVictim, const CTakeDamageInfo& info);
 
-	virtual bool	PassesDamageFilter( const CTakeDamageInfo &info );
-	virtual int 	OnTakeDamage_Alive( const CTakeDamageInfo &info );
+	virtual bool	PassesDamageFilter(const CTakeDamageInfo& info);
+	virtual int 	OnTakeDamage_Alive(const CTakeDamageInfo& info);
 #endif
 
-	void SetActivity( Activity NewActivity );
-	NPC_STATE		SelectIdealState ( void );
+	void SetActivity(Activity NewActivity);
+	NPC_STATE		SelectIdealState(void);
 
 	// Input handlers.
-	void InputLookOn( inputdata_t &inputdata );
-	void InputLookOff( inputdata_t &inputdata );
-	void InputStartPatrolling( inputdata_t &inputdata );
-	void InputStopPatrolling( inputdata_t &inputdata );
-	void InputAssault( inputdata_t &inputdata );
-	void InputHitByBugbait( inputdata_t &inputdata );
+	void InputLookOn(inputdata_t& inputdata);
+	void InputLookOff(inputdata_t& inputdata);
+	void InputStartPatrolling(inputdata_t& inputdata);
+	void InputStopPatrolling(inputdata_t& inputdata);
+	void InputAssault(inputdata_t& inputdata);
+	void InputHitByBugbait(inputdata_t& inputdata);
 #ifndef MAPBASE
-	void InputThrowGrenadeAtTarget( inputdata_t &inputdata );
+	void InputThrowGrenadeAtTarget(inputdata_t& inputdata);
 #else
-	void InputSetElite( inputdata_t &inputdata );
+	void InputSetElite(inputdata_t& inputdata);
 
-	void InputDropGrenade( inputdata_t &inputdata );
+	void InputDropGrenade(inputdata_t& inputdata);
 
-	void InputSetTacticalVariant( inputdata_t &inputdata );
+	void InputSetTacticalVariant(inputdata_t& inputdata);
 
-	void InputSetPoliceGoal( inputdata_t &inputdata );
+	void InputSetPoliceGoal(inputdata_t& inputdata);
 #endif
 #ifdef EZ
 	void InputSetCommandable( inputdata_t &inputdata );  // New inputs to toggle player commands on / off
@@ -159,20 +159,22 @@ public:
 	//-----------------------------------------------------
 	//	Outputs
 	//-----------------------------------------------------	
-	virtual void	Use(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value);
+	virtual void	Use(CBaseEntity* pActivator, CBaseEntity* pCaller, USE_TYPE useType, float value);
 	COutputEvent	m_OnPlayerUse;
 	COutputEvent	m_OnFollowOrder;
 	void 			ClearFollowTarget();
 	// Added by 1upD - methods required for player squad behavior
 	virtual bool	IsCommandable(); // This should check the spawn flag
-	virtual bool	IsPlayerAlly(CBasePlayer *pPlayer = NULL) { return this->IsCommandable() || BaseClass::IsPlayerAlly(); } // If this NPC is commandable, it IS a player ally regardless of affiliation
-	virtual CAI_BaseNPC *GetSquadCommandRepresentative();
+	// Only classes that return true here can ever join the player's squad
+	virtual bool	CanBePlayerSquadmate() { return false; }
+	virtual bool	IsPlayerAlly(CBasePlayer* pPlayer = NULL) { return this->IsCommandable() || BaseClass::IsPlayerAlly(); } // If this NPC is commandable, it IS a player ally regardless of affiliation
+	virtual CAI_BaseNPC* GetSquadCommandRepresentative();
 	virtual void	GetSquadGoal();
-	virtual void	SetCommandGoal(const Vector &vecGoal) { BaseClass::SetCommandGoal(vecGoal); }
+	virtual void	SetCommandGoal(const Vector& vecGoal) { BaseClass::SetCommandGoal(vecGoal); }
 	virtual void	ClearCommandGoal() { BaseClass::ClearCommandGoal(); }
 	virtual bool	HaveCommandGoal() const;
-	virtual bool	TargetOrder(CBaseEntity *pTarget, CAI_BaseNPC **Allies, int numAllies);
-	virtual void	MoveOrder(const Vector &vecDest, CAI_BaseNPC **Allies, int numAllies);
+	virtual bool	TargetOrder(CBaseEntity* pTarget, CAI_BaseNPC** Allies, int numAllies);
+	virtual void	MoveOrder(const Vector& vecDest, CAI_BaseNPC** Allies, int numAllies);
 	virtual void	OnTargetOrder() {}
 	virtual void	OnMoveOrder() {}
 	virtual void	ToggleSquadCommand();
@@ -187,107 +189,107 @@ public:
 	virtual void	FollowSound();
 	virtual void	StopFollowSound();
 	virtual bool	ShouldAlwaysThink();
-	virtual bool	ShouldBehaviorSelectSchedule( CAI_BehaviorBase *pBehavior );
+	virtual bool	ShouldBehaviorSelectSchedule(CAI_BehaviorBase* pBehavior);
 	virtual bool	ShouldLookForBetterWeapon();
 	virtual bool	ShouldLookForHealthItem();
-	CBaseEntity		*FindHealthItem( const Vector &vecPosition, const Vector &range );
-	void			PickupItem( CBaseEntity *pItem );
-	virtual void	Weapon_Drop( CBaseCombatWeapon *pWeapon, const Vector *pvecTarget = NULL, const Vector *pVelocity = NULL );
-	virtual void	PickupWeapon( CBaseCombatWeapon *pWeapon );
-	virtual const char *GetBackupWeaponClass();
+	CBaseEntity* FindHealthItem(const Vector& vecPosition, const Vector& range);
+	void			PickupItem(CBaseEntity* pItem);
+	virtual void	Weapon_Drop(CBaseCombatWeapon* pWeapon, const Vector* pvecTarget = NULL, const Vector* pVelocity = NULL);
+	virtual void	PickupWeapon(CBaseCombatWeapon* pWeapon);
+	virtual const char* GetBackupWeaponClass();
 
 	int 			SelectSchedulePriorityAction();
 	int 			SelectScheduleHeal();
 	virtual int 	SelectScheduleRetrieveItem();
 
-	virtual bool	IgnorePlayerPushing( void );
+	virtual bool	IgnorePlayerPushing(void);
 
 	virtual bool	IsMajorCharacter() { return IsCommandable(); }
 
 	virtual bool	CanOrderSurrender();
 
 	virtual bool	ShouldAllowPlayerGive() { return (m_iCanPlayerGive == TRS_NONE && IsCommandable()) || m_iCanPlayerGive == TRS_TRUE; }
-	virtual bool	IsGiveableWeapon( CBaseCombatWeapon *pWeapon ) { return true; }
-	virtual bool	IsGiveableItem( CBaseEntity *pItem );
-	virtual void	StartPlayerGive( CBasePlayer *pPlayer ) {}
-	virtual void	OnCantBeGivenObject( CBaseEntity *pItem ) {}
+	virtual bool	IsGiveableWeapon(CBaseCombatWeapon* pWeapon) { return true; }
+	virtual bool	IsGiveableItem(CBaseEntity* pItem);
+	virtual void	StartPlayerGive(CBasePlayer* pPlayer) {}
+	virtual void	OnCantBeGivenObject(CBaseEntity* pItem) {}
 
-	bool 			IsMedic() 			{ return m_bIsMedic; }
-	bool 			IsAmmoResupplier() 	{ return m_bIsAmmoResupplier; }
-	
+	bool 			IsMedic() { return m_bIsMedic; }
+	bool 			IsAmmoResupplier() { return m_bIsAmmoResupplier; }
+
 	bool 			CanHeal();
-	bool 			ShouldHealTarget( CBaseEntity *pTarget, bool bActiveUse = false );
-	bool 			ShouldHealTossTarget( CBaseEntity *pTarget, bool bActiveUse = false );
+	bool 			ShouldHealTarget(CBaseEntity* pTarget, bool bActiveUse = false);
+	bool 			ShouldHealTossTarget(CBaseEntity* pTarget, bool bActiveUse = false);
 	void 			Heal();
 
-	void			TossHealthKit( CBaseCombatCharacter *pThrowAt, const Vector &offset ); // create a healthkit and throw it at someone
-	void			InputForceHealthKitToss( inputdata_t &inputdata );
+	void			TossHealthKit(CBaseCombatCharacter* pThrowAt, const Vector& offset); // create a healthkit and throw it at someone
+	void			InputForceHealthKitToss(inputdata_t& inputdata);
 
-	virtual bool	ShouldGib( const CTakeDamageInfo &info );
-	virtual bool	CorpseGib( const CTakeDamageInfo &info );
+	virtual bool	ShouldGib(const CTakeDamageInfo& info);
+	virtual bool	CorpseGib(const CTakeDamageInfo& info);
 
 	// Blixibon - Elites in ball attacks should aim while moving, even if they can't shoot
-	bool			HasAttackSlot() { return BaseClass::HasAttackSlot() || HasStrategySlot( SQUAD_SLOT_SPECIAL_ATTACK ); }
+	bool			HasAttackSlot() { return BaseClass::HasAttackSlot() || HasStrategySlot(SQUAD_SLOT_SPECIAL_ATTACK); }
 
 	// 1upD - Accessor for "Disable Player Use" key value
 	bool			IsPlayerUseDisabled() { return m_bDisablePlayerUse; };
 #endif
 
-	bool			UpdateEnemyMemory( CBaseEntity *pEnemy, const Vector &position, CBaseEntity *pInformer = NULL );
+	bool			UpdateEnemyMemory(CBaseEntity* pEnemy, const Vector& position, CBaseEntity* pInformer = NULL);
 
-	void			Spawn( void );
-	void			Precache( void );
+	void			Spawn(void);
+	void			Precache(void);
 	void			Activate();
 
-	Class_T			Classify( void );
+	Class_T			Classify(void);
 	bool			IsElite() { return m_fIsElite; }
 #ifdef MAPBASE
 	bool			IsAltFireCapable();
 	bool			IsGrenadeCapable();
 #ifdef EZ2
-	void			SetAlternateCapable( bool toggle ) { m_bAlternateCapable = toggle; }
+	void			SetAlternateCapable(bool toggle) { m_bAlternateCapable = toggle; }
 #endif
-	const char*		GetGrenadeAttachment() { return "lefthand"; }
+	const char* GetGrenadeAttachment() { return "lefthand"; }
 #else
 #endif
 #ifndef MAPBASE // CAI_GrenadeUser
-	void			DelayAltFireAttack( float flDelay );
-	void			DelaySquadAltFireAttack( float flDelay );
+	void			DelayAltFireAttack(float flDelay);
+	void			DelaySquadAltFireAttack(float flDelay);
 #endif
-	float			MaxYawSpeed( void );
+	float			MaxYawSpeed(void);
 	bool			ShouldMoveAndShoot();
-	bool			OverrideMoveFacing( const AILocalMoveGoal_t &move, float flInterval );;
-	void			HandleAnimEvent( animevent_t *pEvent );
-	Vector			Weapon_ShootPosition( );
+	bool			OverrideMoveFacing(const AILocalMoveGoal_t& move, float flInterval);;
+	void			HandleAnimEvent(animevent_t* pEvent);
+	Vector			Weapon_ShootPosition();
 
-	Vector			EyeOffset( Activity nActivity );
-	Vector			EyePosition( void );
-	Vector			BodyTarget( const Vector &posSrc, bool bNoisy = true );
+	Vector			EyeOffset(Activity nActivity);
+	Vector			EyePosition(void);
+	Vector			BodyTarget(const Vector& posSrc, bool bNoisy = true);
 #ifndef MAPBASE // CAI_GrenadeUser
 	Vector			GetAltFireTarget();
 #endif
 
-	void			StartTask( const Task_t *pTask );
-	void			RunTask( const Task_t *pTask );
-	void			TaskFail( AI_TaskFailureCode_t );
-	void			TaskFail( const char *pszGeneralFailText ) { BaseClass::TaskFail( pszGeneralFailText ); }
+	void			StartTask(const Task_t* pTask);
+	void			RunTask(const Task_t* pTask);
+	void			TaskFail(AI_TaskFailureCode_t);
+	void			TaskFail(const char* pszGeneralFailText) { BaseClass::TaskFail(pszGeneralFailText); }
 	void			PostNPCInit();
 	void			GatherConditions();
 	virtual void	PrescheduleThink();
 
 #ifdef EZ
-	Disposition_t	IRelationType( CBaseEntity *pTarget );
-	int				IRelationPriority( CBaseEntity *pTarget );
+	Disposition_t	IRelationType(CBaseEntity* pTarget);
+	int				IRelationPriority(CBaseEntity* pTarget);
 #endif
 #ifdef MAPBASE
-	Activity		Weapon_TranslateActivity( Activity baseAct, bool *pRequired = NULL );
-	Activity		NPC_BackupActivity( Activity eNewActivity );
+	Activity		Weapon_TranslateActivity(Activity baseAct, bool* pRequired = NULL);
+	Activity		NPC_BackupActivity(Activity eNewActivity);
 #endif
 
-	Activity		NPC_TranslateActivity( Activity eNewActivity );
-	void			BuildScheduleTestBits( void );
-	virtual int		SelectSchedule( void );
-	virtual int		SelectFailSchedule( int failedSchedule, int failedTask, AI_TaskFailureCode_t taskFailCode );
+	Activity		NPC_TranslateActivity(Activity eNewActivity);
+	void			BuildScheduleTestBits(void);
+	virtual int		SelectSchedule(void);
+	virtual int		SelectFailSchedule(int failedSchedule, int failedTask, AI_TaskFailureCode_t taskFailCode);
 	int				SelectScheduleAttack();
 
 	bool			CreateBehaviors();
@@ -299,36 +301,36 @@ public:
 	void			OnAnimEventDeployManhack( animevent_t *pEvent );
 	void			OnAnimEventStartDeployManhack( void );
 	void			OnScheduleChange();
-	virtual void	HandleManhackSpawn( CAI_BaseNPC *pNPC ) {}
+	virtual void	HandleManhackSpawn(CAI_BaseNPC* pNPC) {}
 #endif
 
 #ifdef EZ2
-	virtual bool	OnObstructionPreSteer( AILocalMoveGoal_t *pMoveGoal, float distClear, AIMoveResult_t *pResult );
-	virtual bool	ShouldAttackObstruction( CBaseEntity *pEntity );
+	virtual bool	OnObstructionPreSteer(AILocalMoveGoal_t* pMoveGoal, float distClear, AIMoveResult_t* pResult);
+	virtual bool	ShouldAttackObstruction(CBaseEntity* pEntity);
 #endif
 
 	bool			OnBeginMoveAndShoot();
 	void			OnEndMoveAndShoot();
 
 #ifdef EZ
-	bool			PickTacticalLookTarget( AILookTargetArgs_t *pArgs );
-	void			OnStateChange( NPC_STATE OldState, NPC_STATE NewState );
+	bool			PickTacticalLookTarget(AILookTargetArgs_t* pArgs);
+	void			OnStateChange(NPC_STATE OldState, NPC_STATE NewState);
 	void			AimGun();
 #endif
 
 	// Combat
-	WeaponProficiency_t CalcWeaponProficiency( CBaseCombatWeapon *pWeapon );
+	WeaponProficiency_t CalcWeaponProficiency(CBaseCombatWeapon* pWeapon);
 	bool			HasShotgun();
 	bool			ActiveWeaponIsFullyLoaded();
 
-	bool			HandleInteraction(int interactionType, void *data, CBaseCombatCharacter *sourceEnt);
+	bool			HandleInteraction(int interactionType, void* data, CBaseCombatCharacter* sourceEnt);
 #ifdef EZ
-	bool			FValidateHintType( CAI_Hint *pHint );
+	bool			FValidateHintType(CAI_Hint* pHint);
 #endif
-	const char*		GetSquadSlotDebugName( int iSquadSlot );
+	const char* GetSquadSlotDebugName(int iSquadSlot);
 
-	bool			IsUsingTacticalVariant( int variant );
-	bool			IsUsingPathfindingVariant( int variant ) { return m_iPathfindingVariant == variant; }
+	bool			IsUsingTacticalVariant(int variant);
+	bool			IsUsingPathfindingVariant(int variant) { return m_iPathfindingVariant == variant; }
 
 	bool			IsRunningApproachEnemySchedule();
 
@@ -336,56 +338,57 @@ public:
 	// Sounds
 	// -------------
 #ifdef MAPBASE
-	void			DeathSound( const CTakeDamageInfo &info );
-	void			PainSound( const CTakeDamageInfo &info );
+	void			DeathSound(const CTakeDamageInfo& info);
+	void			PainSound(const CTakeDamageInfo& info);
 #else
-	void			DeathSound( void );
-	void			PainSound( void );
+	void			DeathSound(void);
+	void			PainSound(void);
 #endif
 #ifdef EZ
 	void			RegenSound(); // Added by 1upD
 #endif
-	void			IdleSound( void );
-	void			AlertSound( void );
+	void			IdleSound(void);
+	void			AlertSound(void);
 #ifdef MAPBASE
-	void			LostEnemySound( CBaseEntity *pEnemy );
-	void			FoundEnemySound( CBaseEntity *pEnemy );
+	void			LostEnemySound(CBaseEntity* pEnemy);
+	void			FoundEnemySound(CBaseEntity* pEnemy);
 #else
-	void			LostEnemySound( void );
-	void			FoundEnemySound( void );
+	void			LostEnemySound(void);
+	void			FoundEnemySound(void);
 #endif
-	void			AnnounceAssault( void );
-	void			AnnounceEnemyType( CBaseEntity *pEnemy );
-	void			AnnounceEnemyKill( CBaseEntity *pEnemy );
+	void			AnnounceAssault(void);
+	void			AnnounceEnemyType(CBaseEntity* pEnemy);
+	void			AnnounceEnemyKill(CBaseEntity* pEnemy);
 
-	virtual void	BashSound() { EmitSound( "NPC_Combine.WeaponBash" ); }
+	virtual void	BashSound() { EmitSound("NPC_Combine.WeaponBash"); }
 
-	void			NotifyDeadFriend( CBaseEntity* pFriend );
+	void			NotifyDeadFriend(CBaseEntity* pFriend);
 
-	virtual float	HearingSensitivity( void ) { return 1.0; };
-	int				GetSoundInterests( void );
-	virtual bool	QueryHearSound( CSound *pSound );
+	virtual float	HearingSensitivity(void) { return 1.0; };
+	int				GetSoundInterests(void);
+	virtual bool	QueryHearSound(CSound* pSound);
 
 	// Speaking
-	void			SpeakSentence( int sentType );
+	void			SpeakSentence(int sentType);
 #ifdef COMBINE_SOLDIER_USES_RESPONSE_SYSTEM
-	bool			SpeakIfAllowed( const char *concept, SentencePriority_t sentencepriority = SENTENCE_PRIORITY_NORMAL, SentenceCriteria_t sentencecriteria = SENTENCE_CRITERIA_IN_SQUAD )
+	bool			SpeakIfAllowed(const char* concept, SentencePriority_t sentencepriority = SENTENCE_PRIORITY_NORMAL, SentenceCriteria_t sentencecriteria = SENTENCE_CRITERIA_IN_SQUAD)
 	{
-		return SpeakIfAllowed( concept, NULL, sentencepriority, sentencecriteria );
+		return SpeakIfAllowed(concept, NULL, sentencepriority, sentencecriteria);
 	}
-	bool			SpeakIfAllowed( const char *concept, const char *modifiers, SentencePriority_t sentencepriority = SENTENCE_PRIORITY_NORMAL, SentenceCriteria_t sentencecriteria = SENTENCE_CRITERIA_IN_SQUAD );
-	bool			SpeakIfAllowed( const char *concept, AI_CriteriaSet& modifiers, SentencePriority_t sentencepriority = SENTENCE_PRIORITY_NORMAL, SentenceCriteria_t sentencecriteria = SENTENCE_CRITERIA_IN_SQUAD );
-	void			ModifyOrAppendCriteria( AI_CriteriaSet& set );
+	bool			SpeakIfAllowed(const char* concept, const char* modifiers, SentencePriority_t sentencepriority = SENTENCE_PRIORITY_NORMAL, SentenceCriteria_t sentencecriteria = SENTENCE_CRITERIA_IN_SQUAD);
+	// virtual: every Combine speech call funnels through this overload, so subclasses (npc_combine_grunt) can remap concepts
+	virtual bool	SpeakIfAllowed(const char* concept, AI_CriteriaSet& modifiers, SentencePriority_t sentencepriority = SENTENCE_PRIORITY_NORMAL, SentenceCriteria_t sentencecriteria = SENTENCE_CRITERIA_IN_SQUAD);
+	void			ModifyOrAppendCriteria(AI_CriteriaSet& set);
 #endif
 
 #ifdef EZ2
-	void			ModifyOrAppendCriteriaForPlayer( CBasePlayer *pPlayer, AI_CriteriaSet& set );
+	void			ModifyOrAppendCriteriaForPlayer(CBasePlayer* pPlayer, AI_CriteriaSet& set);
 #endif
 
-	virtual int		TranslateSchedule( int scheduleType );
-	void			OnStartSchedule( int scheduleType );
+	virtual int		TranslateSchedule(int scheduleType);
+	void			OnStartSchedule(int scheduleType);
 
-	virtual bool	ShouldPickADeathPose( void );
+	virtual bool	ShouldPickADeathPose(void);
 
 #ifdef EZ
 	// Blixibon - Created to use/deactivate certain code on CAI_PlayerAlly/CNPC_PlayerCompanion.
@@ -393,9 +396,9 @@ public:
 #endif
 
 protected:
-	void			SetKickDamage( int nDamage ) { m_nKickDamage = nDamage; }
+	void			SetKickDamage(int nDamage) { m_nKickDamage = nDamage; }
 #ifndef COMBINE_SOLDIER_USES_RESPONSE_SYSTEM
-	CAI_Sentence< CNPC_Combine > *GetSentences() { return &m_Sentences; }
+	CAI_Sentence< CNPC_Combine >* GetSentences() { return &m_Sentences; }
 #endif
 
 #ifdef EZ
@@ -482,7 +485,7 @@ private:
 	//=========================================================
 	// Combine Tasks
 	//=========================================================
-	enum 
+	enum
 	{
 		TASK_COMBINE_FACE_TOSS_DIR = BaseClass::NEXT_TASK,
 		TASK_COMBINE_IGNORE_ATTACKS,
@@ -543,8 +546,8 @@ private:
 	bool ShouldChargePlayer();
 
 	// Chase the enemy, updating the target position as the player moves
-	void StartTaskChaseEnemyContinuously( const Task_t *pTask );
-	void RunTaskChaseEnemyContinuously( const Task_t *pTask );
+	void StartTaskChaseEnemyContinuously(const Task_t* pTask);
+	void RunTaskChaseEnemyContinuously(const Task_t* pTask);
 
 	class CCombineStandoffBehavior : public CAI_ComponentWithOuter<CNPC_Combine, CAI_StandoffBehavior>
 	{
@@ -553,7 +556,7 @@ private:
 		virtual int SelectScheduleAttack()
 		{
 			int result = GetOuter()->SelectScheduleAttack();
-			if ( result == SCHED_NONE )
+			if (result == SCHED_NONE)
 				result = BaseClass::SelectScheduleAttack();
 			return result;
 		}
@@ -566,16 +569,16 @@ private:
 		DECLARE_CLASS(CCombineFollowBehavior, CAI_FollowBehavior);
 
 		virtual int SelectSchedule();
-		virtual int	TranslateSchedule( int scheduleType );
+		virtual int	TranslateSchedule(int scheduleType);
 
 		virtual bool PlayerIsPushing();
 
-		inline CNPC_Combine *GetOuterS() { return static_cast<CNPC_Combine*>(GetOuter()); }
+		inline CNPC_Combine* GetOuterS() { return static_cast<CNPC_Combine*>(GetOuter()); }
 	};
 #endif
 
 	// Rappel
-	virtual bool IsWaitingToRappel( void ) { return m_RappelBehavior.IsWaitingToRappel(); }
+	virtual bool IsWaitingToRappel(void) { return m_RappelBehavior.IsWaitingToRappel(); }
 	void BeginRappel() { m_RappelBehavior.BeginRappel(); }
 #ifdef EZ2
 	// Used by the Arbeit helicopter
@@ -611,7 +614,7 @@ private:
 
 	bool			m_bIsMedic;
 	bool			m_bIsAmmoResupplier;
-	
+
 	float			m_flPlayerHealTime;
 	float			m_flAllyHealTime;
 	float			m_flPlayerGiveAmmoTime;
@@ -626,7 +629,7 @@ private:
 	float			m_flNextRegenSoundTime; // Added by 1upD
 	float			m_flNextAlertSoundTime;
 #ifndef MAPBASE // CAI_GrenadeUser
-	float			m_flNextGrenadeCheck;	
+	float			m_flNextGrenadeCheck;
 #endif
 	float			m_flNextLostSoundTime;
 	float			m_flAlertPatrolTime;		// When to stop doing alert patrol
@@ -647,8 +650,8 @@ private:
 #endif
 #ifdef EZ // Blixibon - We inherit most of our behaviors from CNPC_PlayerCompanion now.
 protected:
-	virtual CAI_StandoffBehavior &GetStandoffBehavior( void ) { return m_StandoffBehavior; } // Blixibon - Added because soldiers have their own special standoff behavior
-	virtual CAI_FollowBehavior &GetFollowBehavior( void ) { return m_FollowBehavior; }
+	virtual CAI_StandoffBehavior& GetStandoffBehavior(void) { return m_StandoffBehavior; } // Blixibon - Added because soldiers have their own special standoff behavior
+	virtual CAI_FollowBehavior& GetFollowBehavior(void) { return m_FollowBehavior; }
 
 	CCombineStandoffBehavior	m_StandoffBehavior;
 	CCombineFollowBehavior		m_FollowBehavior;

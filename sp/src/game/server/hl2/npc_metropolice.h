@@ -54,6 +54,8 @@ public:
 	void Spawn( void );
 	void Precache( void );
 
+	bool m_fIsElite; // Added to track Elite Metrocop status
+
 	Class_T		Classify( void );
 	Disposition_t IRelationType(CBaseEntity *pTarget);
 	float		MaxYawSpeed( void );

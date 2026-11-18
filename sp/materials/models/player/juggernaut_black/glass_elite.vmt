@@ -1,0 +1,17 @@
+"VertexlitGeneric"
+{
+	"$basetexture" "models\combine_soldier\specialist\blackopsnvg"
+	"$selfillum" "1"
+	"$selfillummaskscale" "5"
+
+ 	"Proxies"
+    {
+        "Sine"
+        {
+            "resultVar" "$selfillumtint"
+            "sineperiod" 0.1
+            "sinemin" 0.875
+            "sinemax" 1.0
+        }
+    }
+}

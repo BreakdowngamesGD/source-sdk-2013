@@ -12,6 +12,11 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+#include "filesystem.h"
+
+// Declare the external ConVar defined in npc_metropolice.cpp
+extern ConVar npc_metropolice_skinpack;
+
 // Husks generally use 90% of the original NPC's health
 
 ConVar	sk_husk_police_health( "sk_husk_police_health", "80" ); // From 90
@@ -76,21 +81,54 @@ void CNPC_HuskPolice::Spawn( void )
 // Input  :
 // Output :
 //-----------------------------------------------------------------------------
-void CNPC_HuskPolice::Precache()
+void CNPC_HuskPolice::Precache(void)
 {
-	if ( GetModelName() == NULL_STRING )
+	// Ensure there is a base model name if none was set
+	if (!GetModelName() || GetModelName() == NULL_STRING)
 	{
-		switch (m_tEzVariant)
-		{
-			case EZ_VARIANT_ATHENAEUM:
-				SetModelName( MAKE_STRING( "models/husks/athenaeum/husk_police.mdl" ) );
-				break;
+		SetModelName(MAKE_STRING("models/husks/husk_police.mdl")); // Adjust default model path if yours differs
+	}
 
-			default:
-				SetModelName( MAKE_STRING( "models/husks/husk_police.mdl" ) );
-				break;
+	const char* pModelName = STRING(GetModelName());
+	const char* pszFileName = NULL;
+
+	// Extract just the filename (e.g., "husk_police.mdl")
+	if (pModelName && pModelName[0])
+	{
+		pszFileName = strrchr(pModelName, '/');
+		if (pszFileName)
+		{
+			pszFileName++; // Skip past slash
+		}
+		else
+		{
+			pszFileName = pModelName;
 		}
 	}
+
+	// Skinpack redirection based on the metropolice skinpack ConVar
+	int iSkinPack = npc_metropolice_skinpack.GetInt();
+	if (iSkinPack > 0 && pszFileName && pszFileName[0])
+	{
+		char szSkinPackPath[512];
+
+		// Routes to your policeskinpack folder while keeping the husk filename
+		Q_snprintf(szSkinPackPath, sizeof(szSkinPackPath), "models/policeskinpack%d/%s", iSkinPack, pszFileName);
+
+		if (g_pFullFileSystem && g_pFullFileSystem->FileExists(szSkinPackPath))
+		{
+			SetModelName(AllocPooledString(szSkinPackPath));
+			pModelName = STRING(GetModelName());
+		}
+		else
+		{
+			DevWarning("Husk police skinpack model %s not found in pack %d, using default path.\n", pszFileName, iSkinPack);
+		}
+	}
+
+	PrecacheModel(pModelName);
+
+	// ... rest of your existing husk police precaches ...
 
 	BaseClass::Precache();
 }

@@ -447,6 +447,7 @@ private:
 	string_t		m_iszOriginalSquad;
 	float			m_flTimeJoinedPlayerSquad;
 	bool			m_bWasInPlayerSquad;
+	bool			m_bHoldPositionGoal;	// Combine-style: dismissed by +USE, stay where you are
 	float			m_flTimeLastCloseToPlayer;
 	string_t		m_iszDenyCommandConcept;
 #ifdef MAPBASE

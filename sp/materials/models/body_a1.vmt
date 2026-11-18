@@ -1,0 +1,25 @@
+"VertexLitGeneric"
+{
+	"$baseTexture" "models/body_A1"
+	"$halflambert" 1
+                "$nocull" "0"
+
+	$phong 1
+	$phongexponent 9
+	$phongboost .2
+	$phongfresnelranges "[.2 .6 1]"
+                "$BasemapAlphaPhongMask" "1"
+
+	"$Rimlight" 			    0
+	"$RimlightExponent"         "5"
+	"$RimlightBoost"            ".1"
+	"$RimlightAlbedo"           "1"
+	"$RimMask" 				    "1"
+$phongfresnelranges	[0 0.5 0.5]
+
+$detail "models/fabricdetail"
+$detailscale 30
+$detailblendfactor 1.5
+$detailblendmode 0
+$seamless_detail 1
+}

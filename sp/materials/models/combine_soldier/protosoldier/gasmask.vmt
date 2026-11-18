@@ -1,0 +1,5 @@
+"VertexlitGeneric"
+{
+	"$basetexture" "models/combine_soldier/facewear/gasmask"
+	"$nocull" 1
+}

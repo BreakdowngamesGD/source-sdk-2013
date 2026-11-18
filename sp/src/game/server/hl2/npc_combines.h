@@ -46,6 +46,9 @@ public:
 
 	virtual	bool		AllowedToIgnite( void ) { return true; }
 
+	bool		m_bUseModelOverride;
+	string_t	m_strModelOverride;
+
 
 private:
 	bool		ShouldHitPlayer( const Vector &targetDir, float targetDist );

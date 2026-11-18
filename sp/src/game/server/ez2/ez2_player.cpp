@@ -36,7 +36,7 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-ConVar player_mute_responses( "player_mute_responses", "0", FCVAR_ARCHIVE, "Mutes the responsive Bad Cop." );
+ConVar player_mute_responses( "player_mute_responses", "1", FCVAR_ARCHIVE, "Mutes the responsive Bad Cop." );
 ConVar player_dummy_in_squad( "player_dummy_in_squad", "0", FCVAR_ARCHIVE, "Puts the player dummy in the player's squad, which means squadmates will see enemies the player sees." );
 ConVar player_dummy( "player_dummy", "1", FCVAR_NONE, "Enables the player NPC dummy." );
 
@@ -228,6 +228,9 @@ void CEZ2_Player::PostThink(void)
 void CEZ2_Player::Precache( void )
 {
 	BaseClass::Precache();
+
+	PrecacheModel("models/weapons/c_arms.mdl");
+
 
 	PrecacheModel( "models/bad_cop.mdl" );
 	PrecacheScriptSound( "Player.Detonate" );
@@ -518,6 +521,19 @@ void CEZ2_Player::Spawn( void )
 		// Must do this here because PostConstructor() is called before save/restore,
 		// which causes duplicates to be created.
 		CreateNPCComponent();
+	}
+
+	CBaseViewModel* pHandVM = GetViewModel(1);
+	if (!pHandVM)
+	{
+		CreateViewModel(1);
+		pHandVM = GetViewModel(1);
+	}
+
+	if (pHandVM)
+	{
+		pHandVM->SetModel("models/weapons/c_arms.mdl");
+		pHandVM->AddEffects(EF_BONEMERGE);
 	}
 
 	BaseClass::Spawn();

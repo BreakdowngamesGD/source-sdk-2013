@@ -1,0 +1,16 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/combine_soldier/headgear/combinesoldiergearsheet"
+	"$bumpmap" "models/combine_soldier/headgear/combinesoldiergearsheet_bump"
+	"$color2" "[.45 .45 .45]"
+	"$surfaceprop" "flesh"
+	"$selfillum" 1
+	"$model" 1
+	"$phong" 1
+	"$phongboost" "2"
+	"$halflambert" "1"
+	"$phongexponenttexture" "models/combine_soldier/headgear/combinesoldiergearsheet_phong"
+	"$phongalbedotint" "1"
+	
+	"$phongfresnelranges"	"[0 .5 1.0]"
+}
