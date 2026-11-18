@@ -1,5 +1,5 @@
 ## WORKSPACE EXECUTIVE SUMMARY (YAML)
-# Generated: 2026-11-12T19:07:12.6507306-08:00
+# Generated: 2026-11-16T15:51:53.2782767-08:00
 # Root: D:\source-sdk-2013\sp\src
 Architecture:
   Type: General Codebase
@@ -10,10 +10,14 @@ Architecture:
   Services: 0
 ---
 - File: entropyzero.sln
-  Preview: " Microsoft Visual Studio Solution File, Format Version 12.00 # Visual Studio 2013 # # Automatically generated solution: # devtools\bin\vpc /ez1 /v +ga..."
+  Preview: " Microsoft Visual Studio Solution File, Format Version 12.00 # Visual Studio 2013 # # Automatically generated solution: # devtools\bin\vpc /f /ez1 /v ..."
 - File: entropyzero2.sln
   Preview: " Microsoft Visual Studio Solution File, Format Version 12.00 # Visual Studio Version 17 VisualStudioVersion = 17.14.37827.9 d17.14 MinimumVisualStudio..."
+- File: everything.sln
+  Preview: " Microsoft Visual Studio Solution File, Format Version 12.00 # Visual Studio 2013 # # Automatically generated solution: # devtools\bin\vpc /ez2 +every..."
 - File: everything_entropyzero.sln
+  Preview: " Microsoft Visual Studio Solution File, Format Version 12.00 # Visual Studio 2013 # # Automatically generated solution: # devtools\bin\vpc /f /hl2 /ep..."
+- File: games.sln
   Preview: " Microsoft Visual Studio Solution File, Format Version 12.00 # Visual Studio 2013 # # Automatically generated solution: # devtools\bin\vpc /hl2 /episo..."
 - File: common\compiledcaptionswap.cpp
   Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Swap a compiled caption file. // // $NoKeywords: $ //=====..."
@@ -1881,6 +1885,64 @@ Architecture:
   Preview: "//========= Copyright (C) 2018, CSProMod Team, All rights reserved. =========// // // Purpose: provide world light related functions to the client // ..."
 - File: game\client\worldlight.h
   Preview: "//========= Copyright (C) 2018, CSProMod Team, All rights reserved. =========// // // Purpose: provide world light related functions to the client // ..."
+- File: game\gamepadui\gamepadui_achievements.cpp
+  Preview: " #include 'gamepadui_button.h' #include 'gamepadui_frame.h' #include 'gamepadui_scroll.h' #include 'gamepadui_interface.h' #include 'gamepadui_image.h..."
+- File: game\gamepadui\gamepadui_basepanel.cpp
+  Preview: "#include 'gamepadui_basepanel.h' #include 'gamepadui_mainmenu.h' #ifdef _WIN32 #ifdef INVALID_HANDLE_VALUE #undef INVALID_HANDLE_VALUE #endif #include..."
+- File: game\gamepadui\gamepadui_basepanel.h
+  Preview: "#ifndef GAMEPADUI_BASEPANEL_H #define GAMEPADUI_BASEPANEL_H #ifdef _WIN32 #pragma once #endif #include 'gamepadui_interface.h' class GamepadUIMainMenu..."
+- File: game\gamepadui\gamepadui_bonusmaps.cpp
+  Preview: "#include 'gamepadui_interface.h' #include 'gamepadui_image.h' #include 'gamepadui_util.h' #include 'gamepadui_frame.h' #include 'gamepadui_scrollbar.h..."
+- File: game\gamepadui\gamepadui_button.cpp
+  Preview: "#include 'gamepadui_button.h' #include 'gamepadui_interface.h' #include 'gamepadui_util.h' #include 'vgui/IVGui.h' #include 'vgui/ISurface.h' // memdb..."
+- File: game\gamepadui\gamepadui_button.h
+  Preview: "#ifndef GAMEPADUI_BUTTON_H #define GAMEPADUI_BUTTON_H #ifdef _WIN32 #pragma once #endif #include 'gamepadui_panel.h' #include 'gamepadui_string.h' #in..."
+- File: game\gamepadui\gamepadui_frame.cpp
+  Preview: "// 🐸 #include 'gamepadui_frame.h' #include 'gamepadui_button.h' #include 'gamepadui_interface.h' #include 'gamepadui_basepanel.h' #include 'inputsyst..."
+- File: game\gamepadui\gamepadui_frame.h
+  Preview: "#ifndef GAMEPADUI_FRAME_H #define GAMEPADUI_FRAME_H #ifdef _WIN32 #pragma once #endif #include 'gamepadui_panel.h' #include 'gamepadui_button.h' #incl..."
+- File: game\gamepadui\gamepadui_genericconfirmation.cpp
+  Preview: "#include 'gamepadui_interface.h' #include 'gamepadui_genericconfirmation.h' #include 'gamepadui_util.h' #include 'ienginevgui.h' #include 'vgui/ILocal..."
+- File: game\gamepadui\gamepadui_genericconfirmation.h
+  Preview: "#ifndef GAMEPADUI_GENERICCONFIRMATION_H #define GAMEPADUI_GENERICCONFIRMATION_H #ifdef _WIN32 #pragma once #endif #include 'gamepadui_frame.h' #includ..."
+- File: game\gamepadui\gamepadui_genericframes.cpp
+  Preview: "#include 'gamepadui_interface.h' #include 'gamepadui_genericframes.h' #include 'gamepadui_util.h' #include 'ienginevgui.h' #include 'vgui/ILocalize.h'..."
+- File: game\gamepadui\gamepadui_genericframes.h
+  Preview: "#ifndef GAMEPADUI_GENERICFRAME_H #define GAMEPADUI_GENERICFRAME_H #ifdef _WIN32 #pragma once #endif #include 'gamepadui_frame.h' #include 'gamepadui_i..."
+- File: game\gamepadui\gamepadui_glyph.h
+  Preview: "#ifndef GAMEPADUI_GLYPH_H #define GAMEPADUI_GLYPH_H #ifdef _WIN32 #pragma once #endif #include 'gamepadui_interface.h' #include 'gamepadui_util.h' #if..."
+- File: game\gamepadui\gamepadui_gradient_helper.h
+  Preview: "#ifndef GAMEPADUI_GRADIENT_HELPER_H #define GAMEPADUI_GRADIENT_HELPER_H #ifdef _WIN32 #pragma once #endif #include 'igamepadui.h' #include 'mathlib/ma..."
+- File: game\gamepadui\gamepadui_image.h
+  Preview: "#ifndef GAMEPADUI_IMAGE_H #define GAMEPADUI_IMAGE_H #ifdef _WIN32 #pragma once #endif #include 'vgui_controls/Panel.h' #include 'bitmap/tgaloader.h' c..."
+- File: game\gamepadui\gamepadui_interface.cpp
+  Preview: "#include 'gamepadui_interface.h' #include 'gamepadui_basepanel.h' #include 'gamepadui_mainmenu.h' #include 'vgui/ILocalize.h' // memdbgon must be the ..."
+- File: game\gamepadui\gamepadui_interface.h
+  Preview: "#ifndef GAMEPADUI_INTERFACE_H #define GAMEPADUI_INTERFACE_H #ifdef _WIN32 #pragma once #endif #include 'igamepadui.h' #include 'cdll_int.h' #include '..."
+- File: game\gamepadui\gamepadui_mainmenu.cpp
+  Preview: "#include 'gamepadui_interface.h' #include 'gamepadui_basepanel.h' #include 'gamepadui_mainmenu.h' #include 'vgui/ISurface.h' #include 'vgui/ILocalize...."
+- File: game\gamepadui\gamepadui_mainmenu.h
+  Preview: "#ifndef GAMEPADUI_MAINMENU_H #define GAMEPADUI_MAINMENU_H #ifdef _WIN32 #pragma once #endif #include 'gamepadui_frame.h' #include 'gamepadui_button.h'..."
+- File: game\gamepadui\gamepadui_newgame.cpp
+  Preview: "#include 'gamepadui_interface.h' #include 'gamepadui_image.h' #include 'gamepadui_util.h' #include 'gamepadui_frame.h' #include 'gamepadui_scrollbar.h..."
+- File: game\gamepadui\gamepadui_options.cpp
+  Preview: "#include 'gamepadui_interface.h' #include 'gamepadui_button.h' #include 'gamepadui_frame.h' #include 'gamepadui_scrollbar.h' #include 'gamepadui_image..."
+- File: game\gamepadui\gamepadui_panel.h
+  Preview: "#ifndef GAMEPADUI_PANEL_H #define GAMEPADUI_PANEL_H #ifdef _WIN32 #pragma once #endif #include 'gamepadui_interface.h' #include 'vgui_controls/Panel.h..."
+- File: game\gamepadui\gamepadui_savegame.cpp
+  Preview: "#include 'gamepadui_interface.h' #include 'gamepadui_image.h' #include 'gamepadui_util.h' #include 'gamepadui_genericconfirmation.h' #include 'gamepad..."
+- File: game\gamepadui\gamepadui_scroll.h
+  Preview: "#ifndef GAMEPADUI_SCROLL_H #define GAMEPADUI_SCROLL_H #ifdef _WIN32 #pragma once #endif class GamepadUIScrollState { public:   GamepadUIScrollState() ..."
+- File: game\gamepadui\gamepadui_scrollbar.cpp
+  Preview: "#include 'gamepadui_scrollbar.h' #include 'vgui/IInput.h' void GamepadUIScrollBar::ApplySchemeSettings( vgui::IScheme *pScheme ) {   BaseClass::ApplyS..."
+- File: game\gamepadui\gamepadui_scrollbar.h
+  Preview: "#ifndef GAMEPADUI_SCROLLBAR_H #define GAMEPADUI_SCROLLBAR_H #ifdef _WIN32 #pragma once #endif #include 'gamepadui_button.h' #include 'gamepadui_scroll..."
+- File: game\gamepadui\gamepadui_string.h
+  Preview: "#ifndef GAMEPADUI_STRING_H #define GAMEPADUI_STRING_H #ifdef _WIN32 #pragma once #endif #include 'vgui/ILocalize.h' #include 'tier1/utlvector.h' exter..."
+- File: game\gamepadui\gamepadui_util.cpp
+  Preview: "#include 'gamepadui_util.h' #include 'gamepadui_interface.h' #include 'tier0/icommandline.h' #include 'tier1/strtools.h' // memdbgon must be the last ..."
+- File: game\gamepadui\gamepadui_util.h
+  Preview: "#ifndef GAMEPADUI_UTIL_H #define GAMEPADUI_UTIL_H #ifdef _WIN32 #pragma once #endif #include 'vgui/ISurface.h' const char *COM_GetModDirectory(); int ..."
 - File: game\gamepadui\igamepadui.h
   Preview: "#ifndef IGAMEPADUI_H #define IGAMEPADUI_H #ifdef _WIN32 #pragma once #endif #include 'tier1/interface.h' #include 'vgui/VGUI.h' #include 'mathlib/vect..."
 - File: game\server\actanimating.cpp
@@ -1947,65 +2009,3 @@ Architecture:
   Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: // //=====================================================..."
 - File: game\server\ai_behavior_rappel.h
   Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose:		Deal with weapon being out // // $Workfile:   $ // $Date:..."
-- File: game\server\ai_behavior_standoff.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Combat behaviors for AIs in a relatively self-preservation..."
-- File: game\server\ai_behavior_standoff.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Combat behaviors for AIs in a relatively self-preservation..."
-- File: game\server\ai_blended_movement.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: // //=====================================================..."
-- File: game\server\ai_blended_movement.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: // // $NoKeywords: $ //===================================..."
-- File: game\server\ai_component.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: // // $NoKeywords: $ //===================================..."
-- File: game\server\ai_concommands.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Console commands for debugging and manipulating NPCs. // /..."
-- File: game\server\ai_condition.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: // //=====================================================..."
-- File: game\server\ai_condition.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose:		The default shared conditions // // $Workfile:   $ // $Da..."
-- File: game\server\AI_Criteria.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: // // $NoKeywords: $ // //================================..."
-- File: game\server\AI_Criteria.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: // //=====================================================..."
-- File: game\server\ai_debug.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: // // $NoKeywords: $ //===================================..."
-- File: game\server\ai_default.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Default schedules. // //==================================..."
-- File: game\server\ai_default.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Default schedules. // //==================================..."
-- File: game\server\ai_dynamiclink.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose:		A link that can be turned on and off. Unlike normal links..."
-- File: game\server\ai_dynamiclink.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose:		A link that can be turned on and off. Unlike normal links..."
-- File: game\server\ai_event.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Events that are available to all NPCs. // //==============..."
-- File: game\server\ai_eventresponse.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: AI system that makes NPCs verbally respond to game events ..."
-- File: game\server\ai_eventresponse.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: AI system that makes NPCs verbally respond to game events ..."
-- File: game\server\ai_expresserfollowup.cpp
-  Preview: "//========= Copyright � 1996-2005, Valve Corporation, All rights reserved. ============// // // Purpose: // // $NoKeywords: $ //======================..."
-- File: game\server\ai_goalentity.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: // //=====================================================..."
-- File: game\server\ai_goalentity.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: // //=====================================================..."
-- File: game\server\ai_hint.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Hint node utilities and functions // // $NoKeywords: $ //=..."
-- File: game\server\ai_hint.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Hint node utilities and functions. // // $NoKeywords: $ //..."
-- File: game\server\ai_hull.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // //====================================================================..."
-- File: game\server\ai_hull.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // //====================================================================..."
-- File: game\server\ai_initutils.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose:		AI Utility classes for building the initial AI Networks /..."
-- File: game\server\ai_initutils.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose:		AI Utility classes for building the initial AI Networks /..."
-- File: game\server\AI_Interest_Target.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Hooks and classes for the support of humanoid NPCs with //..."
-- File: game\server\AI_Interest_Target.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose: Hooks and classes for the support of humanoid NPCs with //..."
-- File: game\server\ai_link.cpp
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose:		 // // $Workfile:   $ // $Date:     $ // //--------------..."
-- File: game\server\ai_link.h
-  Preview: "//========= Copyright Valve Corporation, All rights reserved. ============// // // Purpose:		Base combat character with no AI // // $Workfile:   $ // ..."
