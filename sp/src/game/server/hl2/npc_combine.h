@@ -128,25 +128,27 @@ public:
 	void InputSetPoliceGoal(inputdata_t& inputdata);
 #endif
 #ifdef EZ
-	void InputSetCommandable(inputdata_t& inputdata);  // New inputs to toggle player commands on / off
-	void InputSetNonCommandable(inputdata_t& inputdata);
-	void InputRemoveFromPlayerSquad(inputdata_t& inputdata) { RemoveFromPlayerSquad(); }
-	void InputAddToPlayerSquad(inputdata_t& inputdata) { AddToPlayerSquad(); }
-	void InputEnableManhackToss(inputdata_t& inputdata);
-	void InputDisableManhackToss(inputdata_t& inputdata);
-	void InputDeployManhack(inputdata_t& inputdata);
-	void InputAddManhacks(inputdata_t& inputdata);
-	void InputSetManhacks(inputdata_t& inputdata);
-	void InputEnablePlayerUse(inputdata_t& inputdata);
-	void InputDisablePlayerUse(inputdata_t& inputdata);
-	void InputEnableOrderSurrender(inputdata_t& inputdata);
-	void InputDisableOrderSurrender(inputdata_t& inputdata);
-	void InputEnablePlayerGive(inputdata_t& inputdata);
-	void InputDisablePlayerGive(inputdata_t& inputdata);
-	void InputSetMedicOn(inputdata_t& inputdata);
-	void InputSetMedicOff(inputdata_t& inputdata);
-	void InputSetAmmoResupplierOn(inputdata_t& inputdata);
-	void InputSetAmmoResupplierOff(inputdata_t& inputdata);
+	void InputSetCommandable( inputdata_t &inputdata );  // New inputs to toggle player commands on / off
+	void InputSetNonCommandable(inputdata_t &inputdata);
+	void InputRemoveFromPlayerSquad( inputdata_t &inputdata ) { RemoveFromPlayerSquad(); }
+	void InputAddToPlayerSquad( inputdata_t &inputdata ) { AddToPlayerSquad(); }
+	void InputEnableManhackToss( inputdata_t &inputdata );
+	void InputDisableManhackToss( inputdata_t &inputdata );
+	void InputDeployManhack( inputdata_t &inputdata );
+	void InputAddManhacks( inputdata_t &inputdata );
+	void InputSetManhacks( inputdata_t &inputdata );
+	void InputSetMaxActiveManhacks( inputdata_t &inputdata );
+	void InputTrackManhackAsTossed( inputdata_t &inputdata );
+	void InputEnablePlayerUse( inputdata_t &inputdata );
+	void InputDisablePlayerUse( inputdata_t &inputdata );
+	void InputEnableOrderSurrender( inputdata_t &inputdata );
+	void InputDisableOrderSurrender( inputdata_t &inputdata );
+	void InputEnablePlayerGive( inputdata_t &inputdata );
+	void InputDisablePlayerGive( inputdata_t &inputdata );
+	void InputSetMedicOn( inputdata_t &inputdata );
+	void InputSetMedicOff( inputdata_t &inputdata );
+	void InputSetAmmoResupplierOn( inputdata_t &inputdata );
+	void InputSetAmmoResupplierOff( inputdata_t &inputdata );
 	COutputEHANDLE	m_OutManhack;
 
 	COutputEvent	m_OnHealedNPC;
@@ -293,10 +295,11 @@ public:
 	bool			CreateBehaviors();
 
 #ifdef EZ
-	bool			CanDeployManhack(void);
-	void			ReleaseManhack(void);
-	void			OnAnimEventDeployManhack(animevent_t* pEvent);
-	void			OnAnimEventStartDeployManhack(void);
+	virtual bool	CanDeployManhack( void );
+	virtual bool	CanDeployAdditionalManhacks( void );
+	void			ReleaseManhack( void );
+	void			OnAnimEventDeployManhack( animevent_t *pEvent );
+	void			OnAnimEventStartDeployManhack( void );
 	void			OnScheduleChange();
 	virtual void	HandleManhackSpawn(CAI_BaseNPC* pNPC) {}
 #endif
@@ -401,6 +404,12 @@ protected:
 #ifdef EZ
 	int				m_iManhacks;
 	AIHANDLE		m_hManhack = NULL;
+	float			m_flNextManhackDeployTime;
+
+	// All active manhacks we've deployed
+	// When m_hManhack dies, it takes the next one on the list
+	CUtlVector<AIHANDLE>	m_hActiveManhacks;
+	int						m_iMaxActiveManhacks;
 
 	// 1upD - If true, player +USE has no effect
 	bool m_bDisablePlayerUse;
