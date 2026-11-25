@@ -2476,6 +2476,20 @@ void CBaseCombatCharacter::Weapon_HandleEquip( CBaseCombatWeapon *pWeapon )
 				if (pWeapon->GetSlot() == m_hMyWeapons[i]->GetSlot() &&
 					pWeapon->GetPosition() == m_hMyWeapons[i]->GetPosition())
 				{
+//inventory
+#ifdef EZ2
+					if (Weapon_EquipDual(pWeapon, m_hMyWeapons[i]))
+					{
+						// Weapon has been merged with the existing weapon
+						return;
+					}
+
+					// Inventory system: different weapons sharing a bucket slot/position are variants of
+					// the same cell. Keep both instead of dropping the old one.
+					if (!FClassnameIs(pWeapon, m_hMyWeapons[i]->GetClassname()))
+						continue;
+#endif
+/*
 #ifdef EZ2
 					if (Weapon_EquipDual( pWeapon, m_hMyWeapons[i] ))
 					{
@@ -2483,6 +2497,8 @@ void CBaseCombatCharacter::Weapon_HandleEquip( CBaseCombatWeapon *pWeapon )
 						return;
 					}
 #endif
+*/
+// End of inventory
 
 					// Replace our existing weapon in this slot
 					Weapon_Drop(m_hMyWeapons[i]);

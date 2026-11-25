@@ -2,7 +2,7 @@ versioninfo
 {
 	"editorversion" "400"
 	"editorbuild" "8873"
-	"mapversion" "2"
+	"mapversion" "3"
 	"formatversion" "100"
 	"prefab" "0"
 }
@@ -101,7 +101,7 @@ bgimages_plus
 world
 {
 	"id" "1"
-	"mapversion" "2"
+	"mapversion" "3"
 	"classname" "worldspawn"
 	"chaptertitlenomessage" "1"
 	"comment" "Decompiled by BSPSource v1.4.8 from background01"
@@ -121,7 +121,7 @@ world
 	"MaxRange" "20000"
 	"newunit" "0"
 	"ResponseContext" "terminal:1"
-	"skyname" "sky_day01_01_background_hdr"
+	"skyname" "sky_day01_01_hdr"
 	"sounds" "0"
 	"startdark" "0"
 	"vscriptlanguage_client" "-2"
@@ -106032,8 +106032,8 @@ cameras
 	"activecamera" "0"
 	camera
 	{
-		"position" "[-2653.33 -1112.98 993.051]"
-		"look" "[-2723.14 -1338.49 869.635]"
+		"position" "[-2769.12 -1808.28 289.535]"
+		"look" "[-2507.42 -1765.9 315.527]"
 	}
 }
 cordons

@@ -196,17 +196,24 @@ bool C_BaseViewModel::ShouldFlipViewModel()
 {
 #if defined(CSTRIKE_DLL) || defined (MAPBASE)
 	// If cl_righthand is set, then we want them all right-handed.
-	CBaseCombatWeapon *pWeapon = m_hWeapon.Get();
-	if ( pWeapon )
+	CBaseCombatWeapon* pWeapon = m_hWeapon.Get();
+	if (pWeapon)
 	{
-		const FileWeaponInfo_t *pInfo = &pWeapon->GetWpnData();
-		return pInfo->m_bAllowFlipping && pInfo->m_bBuiltRightHanded != cl_righthand.GetBool();
+		const FileWeaponInfo_t* pInfo = &pWeapon->GetWpnData();
+		bool bRightHand = cl_righthand.GetBool();
+
+		if (FClassnameIs(pWeapon, "weapon_css_glock"))
+		{
+			bRightHand = !bRightHand;
+		}
+
+		return pInfo->m_bAllowFlipping && pInfo->m_bBuiltRightHanded != bRightHand;
 	}
 #endif
 
 #ifdef TF_CLIENT_DLL
-	CBaseCombatWeapon *pWeapon = m_hWeapon.Get();
-	if ( pWeapon )
+	CBaseCombatWeapon* pWeapon = m_hWeapon.Get();
+	if (pWeapon)
 	{
 		return pWeapon->m_bFlipViewModel != cl_flipviewmodels.GetBool();
 	}

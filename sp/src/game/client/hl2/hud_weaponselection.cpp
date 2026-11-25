@@ -21,6 +21,14 @@
 
 #include "vgui/ILocalize.h"
 
+//inventory
+#include "in_buttons.h"
+#include "ez2/c_ez2_player.h"
+#include "fmtstr.h"
+
+ConVar ez2_inv_cursor_speed("ez2_inv_cursor_speed", "1.0", FCVAR_ARCHIVE, "Mouse speed inside the weapon inventory menu");
+// end of inventory
+
 #ifdef EZ2
 #include "in_buttons.h"
 #endif
@@ -57,6 +65,18 @@ class CHudWeaponSelection : public CBaseHudWeaponSelection, public vgui::Panel
 
 public:
 	CHudWeaponSelection(const char *pElementName );
+
+	// inventory
+#ifdef EZ2
+	bool	IsInvMenuOpen() const { return m_bInvMenu; }
+	void	ToggleInvMenu();
+	void	OpenInvMenu();
+	void	CloseInvMenu();
+	void	InvMenuMouseMove(float dx, float dy);
+	void	InvMenuClick();
+	void	InvMenuBack();
+#endif
+	// end of inventory
 
 	virtual bool ShouldDraw();
 	virtual void OnWeaponPickup( C_BaseCombatWeapon *pWeapon );
@@ -124,6 +144,36 @@ protected:
 private:
 	C_BaseCombatWeapon *FindNextWeaponInWeaponSelection(int iCurrentSlot, int iCurrentPosition);
 	C_BaseCombatWeapon *FindPrevWeaponInWeaponSelection(int iCurrentSlot, int iCurrentPosition);
+
+	//inventory
+
+	// While the inventory menu is open it draws the bucket layout regardless of hud_fastswitch
+	int HudType() const
+	{
+#ifdef EZ2
+		if (m_bInvMenu)
+			return HUDTYPE_BUCKETS;
+#endif
+		return hud_fastswitch.GetInt();
+	}
+
+#ifdef EZ2
+	enum { HIT_BUCKET, HIT_CELL, HIT_VARIANT };
+	struct MenuHit_t { int x, y, w, t; int type; int a; int b; };
+
+	void	PaintInvMenu();
+	void	AddMenuHit(int x, int y, int w, int t, int type, int a, int b);
+	void	GetCursorLocal(int& x, int& y);
+	bool	CursorIn(int mx, int my, int x, int y, int w, int t) const { return mx >= x && mx < x + w && my >= y && my < y + t; }
+
+	CUtlVector<MenuHit_t>	m_MenuHits;
+	bool	m_bInvMenu;
+	int		m_iMenuBucket;
+	int		m_iMenuCell;
+	float	m_flCursorX;
+	float	m_flCursorY;
+#endif
+	// end of inventory
 
 	void DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool bSelected, int x, int y, int wide, int tall, Color color, float alpha, int number );
 	void ActivateFastswitchWeaponDisplay( C_BaseCombatWeapon *pWeapon );
@@ -224,6 +274,14 @@ CHudWeaponSelection::CHudWeaponSelection( const char *pElementName ) : CBaseHudW
 	vgui::Panel *pParent = g_pClientMode->GetViewport();
 	SetParent( pParent );
 	m_bFadingOut = false;
+
+	//inventory
+#ifdef EZ2
+	m_bInvMenu = false;
+	m_iMenuBucket = m_iMenuCell = -1;
+	m_flCursorX = m_flCursorY = 0.0f;
+#endif
+	// end of inventory
 }
 
 //-----------------------------------------------------------------------------
@@ -244,6 +302,23 @@ void CHudWeaponSelection::OnWeaponPickup( C_BaseCombatWeapon *pWeapon )
 //-----------------------------------------------------------------------------
 void CHudWeaponSelection::OnThink( void )
 {
+	// inventory
+#ifdef EZ2
+	if (m_bInvMenu)
+	{
+		C_BasePlayer* pLocal = C_BasePlayer::GetLocalPlayer();
+		if (!pLocal || !pLocal->IsAlive() || engine->IsPaused())
+		{
+			CloseInvMenu();
+			return;
+		}
+
+		// never time out while the menu is open
+		m_flSelectionTime = gpGlobals->curtime;
+		return;
+	}
+#endif
+	// end of inventory
 	float flSelectionTimeout = SELECTION_TIMEOUT_THRESHOLD;
 	float flSelectionFadeoutTime = SELECTION_FADEOUT_TIME;
 	if ( hud_fastswitch.GetBool() )
@@ -280,7 +355,31 @@ void CHudWeaponSelection::OnThink( void )
 //-----------------------------------------------------------------------------
 bool CHudWeaponSelection::ShouldDraw()
 {
-	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
+	// inventory 
+	C_BasePlayer* pPlayer = C_BasePlayer::GetLocalPlayer();
+	if (!pPlayer)
+	{
+#ifdef EZ2
+		if (m_bInvMenu)
+			CloseInvMenu();
+#endif
+		if (IsInSelectionMode())
+		{
+			HideSelection();
+		}
+		return false;
+	}
+
+	bool bret = CBaseHudWeaponSelection::ShouldDraw();
+#ifdef EZ2
+	if (!bret && m_bInvMenu)
+		CloseInvMenu();
+	if (bret && m_bInvMenu)
+		return true;
+#endif
+	if (!bret)
+		return false;
+	/*C_BasePlayer* pPlayer = C_BasePlayer::GetLocalPlayer();
 	if ( !pPlayer )
 	{
 		if ( IsInSelectionMode() )
@@ -290,9 +389,11 @@ bool CHudWeaponSelection::ShouldDraw()
 		return false;
 	}
 
-	bool bret = CBaseHudWeaponSelection::ShouldDraw();
+		bool bret = CBaseHudWeaponSelection::ShouldDraw();
 	if ( !bret )
 		return false;
+	*/
+	// end of inventory
 
 	// draw weapon selection a little longer if in fastswitch so we can see what we've selected
 	if ( hud_fastswitch.GetBool() && ( gpGlobals->curtime - m_flSelectionTime ) < (FASTSWITCH_DISPLAY_TIMEOUT + FASTSWITCH_FADEOUT_TIME) )
@@ -311,6 +412,12 @@ void CHudWeaponSelection::LevelInit()
 	m_iSelectedWeaponBox = -1;
 	m_iSelectedSlideDir  = 0;
 	m_pLastWeapon        = NULL;
+
+	// inventory
+#ifdef EZ2
+	m_bInvMenu = false;
+#endif
+	// end of inventory
 }
 
 
@@ -467,6 +574,16 @@ void CHudWeaponSelection::Paint()
 	if ( !pPlayer )
 		return;
 
+	// inventory
+#ifdef EZ2
+	if (m_bInvMenu)
+	{
+		PaintInvMenu();
+		return;
+	}
+#endif
+	// inventory
+
 	// find and display our current selection
 	C_BaseCombatWeapon *pSelectedWeapon = NULL;
 	switch ( hud_fastswitch.GetInt() )
@@ -531,6 +648,7 @@ void CHudWeaponSelection::Paint()
 					{
 						// draw selected in highlighted style
 						DrawLargeWeaponBox( pWeapon, true, xpos, ypos, m_flLargeBoxWide, m_flLargeBoxTall, selectedColor, alpha, -1 );
+					
 					}
 					else
 					{
@@ -800,8 +918,10 @@ void CHudWeaponSelection::Paint()
 void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool bSelected, int xpos, int ypos, int boxWide, int boxTall, Color selectedColor, float alpha, int number )
 {
 	Color col = bSelected ? m_SelectedFgColor : GetFgColor();
-	
-	switch ( hud_fastswitch.GetInt() )
+	// inventory
+	switch ( HudType() )
+	//switch ( hud_fastswitch.GetInt() )
+		// end of inventory
 	{
 	case HUDTYPE_BUCKETS:
 		{
@@ -845,7 +965,10 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 				int x_offs = (boxWide - iconWidth) / 2;
 
 				int y_offs;
-				if ( bSelected && hud_fastswitch.GetInt() != 0 )
+				// inventory
+				if (bSelected && HudType() != 0)
+				//if ( bSelected && hud_fastswitch.GetInt() != 0 )
+				// end of inventory
 				{
 					// place the icon aligned with the non-selected version
 					y_offs = (boxTall / 1.5f - iconHeight) / 2;
@@ -953,7 +1076,10 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 				iconHeight = pWeapon->GetSpriteInactive()->Height();
 
 				x_offs = (boxWide - iconWidth) / 2;
-				if ( bSelected && HUDTYPE_CAROUSEL == hud_fastswitch.GetInt() )
+				// inventory
+				if (bSelected && HUDTYPE_CAROUSEL == HudType())
+				//if ( bSelected && HUDTYPE_CAROUSEL == hud_fastswitch.GetInt() )
+				// end of inventory
 				{
 					// place the icon aligned with the non-selected version
 					y_offs = (boxTall/1.5f - iconHeight) / 2;
@@ -980,7 +1106,10 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 				iconHeight = pWeapon->GetSpriteActive()->Height();
 
 				x_offs = (boxWide - iconWidth) / 2;
-				if ( HUDTYPE_CAROUSEL == hud_fastswitch.GetInt() )
+				// inventory
+				if ( HUDTYPE_CAROUSEL == HudType() )
+				//if ( HUDTYPE_CAROUSEL == hud_fastswitch.GetInt() )
+					// end of inventory
 				{
 					// place the icon aligned with the non-selected version
 					y_offs = (boxTall/1.5f - iconHeight) / 2;
@@ -1015,7 +1144,10 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 		break;
 	}
 
-	if ( HUDTYPE_PLUS == hud_fastswitch.GetInt() )
+	// inventory
+	if (HUDTYPE_PLUS == HudType())
+	//if ( HUDTYPE_PLUS == hud_fastswitch.GetInt() )
+		// end of inventory
 	{
 		// No text in plus bucket method
 		return;
@@ -1265,6 +1397,14 @@ C_BaseCombatWeapon *CHudWeaponSelection::FindNextWeaponInWeaponSelection(int iCu
 
 		if ( CanBeSelectedInHUD( pWeapon ) )
 		{
+			// inventory
+#ifdef EZ2
+// hidden variants don't take part in cycling
+			C_EZ2_Player* pEZ2 = dynamic_cast<C_EZ2_Player*>(pPlayer);
+			if (pEZ2 && pEZ2->GetCellWeapon(pWeapon->GetSlot(), pWeapon->GetPosition()) != pWeapon)
+				continue;
+#endif
+			// end of inventory
 			int weaponSlot = pWeapon->GetSlot(), weaponPosition = pWeapon->GetPosition();
 
 			// see if this weapon is further ahead in the selection list
@@ -1306,6 +1446,14 @@ C_BaseCombatWeapon *CHudWeaponSelection::FindPrevWeaponInWeaponSelection(int iCu
 
 		if ( CanBeSelectedInHUD( pWeapon ) )
 		{
+			// inventory
+#ifdef EZ2
+// hidden variants don't take part in cycling
+			C_EZ2_Player* pEZ2 = dynamic_cast<C_EZ2_Player*>(pPlayer);
+			if (pEZ2 && pEZ2->GetCellWeapon(pWeapon->GetSlot(), pWeapon->GetPosition()) != pWeapon)
+				continue;
+#endif
+			// end of inventory
 			int weaponSlot = pWeapon->GetSlot(), weaponPosition = pWeapon->GetPosition();
 
 			// see if this weapon is further ahead in the selection list
@@ -1330,6 +1478,12 @@ C_BaseCombatWeapon *CHudWeaponSelection::FindPrevWeaponInWeaponSelection(int iCu
 //-----------------------------------------------------------------------------
 void CHudWeaponSelection::CycleToNextWeapon( void )
 {
+	// inventory
+	#ifdef EZ2
+	if (m_bInvMenu)
+		return;
+	#endif
+	// end of inventory
 	// Get the local player.
 	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
 	if ( !pPlayer )
@@ -1398,6 +1552,12 @@ void CHudWeaponSelection::CycleToNextWeapon( void )
 //-----------------------------------------------------------------------------
 void CHudWeaponSelection::CycleToPrevWeapon( void )
 {
+	// inventory
+	#ifdef EZ2
+	if (m_bInvMenu)
+		return;
+#endif
+	// end of inventory
 	// Get the local player.
 	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
 	if ( !pPlayer )
@@ -1500,6 +1660,14 @@ C_BaseCombatWeapon *CHudWeaponSelection::GetWeaponInSlot( int iSlot, int iSlotPo
 	C_BasePlayer *player = C_BasePlayer::GetLocalPlayer();
 	if ( !player )
 		return NULL;
+
+	// inventory
+#ifdef EZ2
+	C_EZ2_Player* pEZ2 = dynamic_cast<C_EZ2_Player*>(player);
+	if (pEZ2)
+		return pEZ2->GetCellWeapon(iSlot, iSlotPos);
+#endif
+	// end of inventory
 
 	for ( int i = 0; i < MAX_WEAPONS; i++ )
 	{
@@ -1738,6 +1906,17 @@ void CHudWeaponSelection::SelectWeaponSlot( int iSlot )
 	// Make sure the player's allowed to switch weapons
 	if ( pPlayer->IsAllowedToSwitchWeapons() == false )
 		return;
+	// inventory
+#ifdef EZ2
+	if (m_bInvMenu)
+	{
+		m_iMenuBucket = iSlot;
+		m_iMenuCell = -1;
+		pPlayer->EmitSound("Player.WeaponSelectionMoveSlot");
+		return;
+	}
+#endif
+	// end of inventory
 
 	switch( hud_fastswitch.GetInt() )
 	{
@@ -1831,3 +2010,293 @@ void CHudWeaponSelection::SelectWeaponSlot( int iSlot )
 
 	pPlayer->EmitSound( "Player.WeaponSelectionMoveSlot" );
 }
+
+// inventory
+#ifdef EZ2
+//-----------------------------------------------------------------------------
+// Inventory menu
+//-----------------------------------------------------------------------------
+void CHudWeaponSelection::ToggleInvMenu()
+{
+	if (m_bInvMenu)
+		CloseInvMenu();
+	else
+		OpenInvMenu();
+}
+
+void CHudWeaponSelection::OpenInvMenu()
+{
+	if (m_bInvMenu)
+		return;
+
+	C_BasePlayer* pPlayer = C_BasePlayer::GetLocalPlayer();
+	if (!pPlayer || !pPlayer->IsAlive() || engine->IsPaused())
+		return;
+
+	if (IsInSelectionMode())
+		HideSelection();
+
+	m_bInvMenu = true;
+	m_iMenuCell = -1;
+	m_iMenuBucket = pPlayer->GetActiveWeapon() ? pPlayer->GetActiveWeapon()->GetSlot() : -1;
+
+	int w, t;
+	surface()->GetScreenSize(w, t);
+	m_flCursorX = w * 0.5f;
+	m_flCursorY = t * 0.5f;
+
+	m_flSelectionTime = gpGlobals->curtime;
+	m_bFadingOut = false;
+	g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("OpenWeaponSelectionMenu");
+}
+
+void CHudWeaponSelection::CloseInvMenu()
+{
+	if (!m_bInvMenu)
+		return;
+
+	m_bInvMenu = false;
+	m_iMenuBucket = m_iMenuCell = -1;
+	HideSelection();
+}
+
+void CHudWeaponSelection::InvMenuMouseMove(float dx, float dy)
+{
+
+	int w, t;
+	surface()->GetScreenSize(w, t);
+
+	float flSpeed = ez2_inv_cursor_speed.GetFloat();
+	m_flCursorX = clamp(m_flCursorX + dx * flSpeed, 0.0f, (float)(w - 1));
+	m_flCursorY = clamp(m_flCursorY + dy * flSpeed, 0.0f, (float)(t - 1));
+}
+
+void CHudWeaponSelection::GetCursorLocal(int& x, int& y)
+{
+	x = (int)m_flCursorX;
+	y = (int)m_flCursorY;
+	ScreenToLocal(x, y);
+}
+
+void CHudWeaponSelection::AddMenuHit(int x, int y, int w, int t, int type, int a, int b)
+{
+	MenuHit_t hit = { x, y, w, t, type, a, b };
+	m_MenuHits.AddToTail(hit);
+}
+
+void CHudWeaponSelection::InvMenuBack()
+{
+	if (m_iMenuCell >= 0)
+		m_iMenuCell = -1;
+	else if (m_iMenuBucket >= 0)
+		m_iMenuBucket = -1;
+	else
+		CloseInvMenu();
+}
+
+void CHudWeaponSelection::InvMenuClick()
+{
+	if (!m_bInvMenu)
+		return;
+
+	C_BasePlayer* pPlayer = C_BasePlayer::GetLocalPlayer();
+	if (!pPlayer)
+		return;
+
+	int mx, my;
+	GetCursorLocal(mx, my);
+
+	// later entries are drawn on top, so test them first
+	for (int i = m_MenuHits.Count() - 1; i >= 0; i--)
+	{
+		const MenuHit_t& h = m_MenuHits[i];
+		if (!CursorIn(mx, my, h.x, h.y, h.w, h.t))
+			continue;
+
+		switch (h.type)
+		{
+		case HIT_BUCKET:
+			m_iMenuBucket = h.a;
+			m_iMenuCell = -1;
+			break;
+
+		case HIT_CELL:
+			m_iMenuBucket = h.a;
+			m_iMenuCell = h.b;
+			break;
+
+		case HIT_VARIANT:
+			engine->ServerCmd(CFmtStr("ez2_inv_select %d", h.a));
+			m_iMenuCell = -1;
+			break;
+		}
+
+		pPlayer->EmitSound("Player.WeaponSelectionMoveSlot");
+		return;
+	}
+
+	// clicked on nothing
+	InvMenuBack();
+}
+
+void CHudWeaponSelection::PaintInvMenu()
+{
+	C_EZ2_Player* pPlayer = dynamic_cast<C_EZ2_Player*>(C_BasePlayer::GetLocalPlayer());
+	if (!pPlayer)
+		return;
+
+	m_MenuHits.RemoveAll();
+
+	int mx, my;
+	GetCursorLocal(mx, my);
+
+	const int boxWide = (int)m_flLargeBoxWide;
+	const int boxTall = (int)m_flLargeBoxTall;
+	const int smallBox = (int)m_flSmallBoxSize;
+	const int gap = (int)m_flBoxGap;
+
+	const float ALPHA_SEL = 255.0f;
+	const float ALPHA_NORMAL = 160.0f;
+
+	// Same layout as the stock bucket display
+	int width = (MAX_WEAPON_SLOTS - 1) * (smallBox + gap) + boxWide;
+	int xpos = (GetWide() - width) / 2;
+	int ypos = 0;
+
+	for (int i = 0; i < MAX_WEAPON_SLOTS; i++)
+	{
+		if (i == m_iMenuBucket)
+		{
+			bool bDrawBucketNumber = true;
+			int iLastPos = GetLastPosInSlot(i);
+
+			for (int slotpos = 0; slotpos <= iLastPos; slotpos++)
+			{
+				C_BaseCombatWeapon* pWeapon = GetWeaponInSlot(i, slotpos);
+				if (!pWeapon)
+				{
+					if (!hud_showemptyweaponslots.GetBool())
+						continue;
+
+					DrawBox(xpos, ypos, boxWide, boxTall, m_EmptyBoxColor, ALPHA_NORMAL, bDrawBucketNumber ? i + 1 : -1);
+				}
+				else
+				{
+					bool bHover = CursorIn(mx, my, xpos, ypos, boxWide, boxTall);
+					bool bSel = bHover || slotpos == m_iMenuCell;
+
+					DrawLargeWeaponBox(pWeapon, bSel, xpos, ypos, boxWide, boxTall,
+						bSel ? m_SelectedBoxColor : m_BoxColor,
+						bSel ? ALPHA_SEL : ALPHA_NORMAL,
+						bDrawBucketNumber ? i + 1 : -1);
+
+					AddMenuHit(xpos, ypos, boxWide, boxTall, HIT_CELL, i, slotpos);
+				}
+
+				ypos += boxTall + gap;
+				bDrawBucketNumber = false;
+			}
+
+			xpos += boxWide;
+		}
+		else
+		{
+			bool bHover = CursorIn(mx, my, xpos, ypos, smallBox, smallBox);
+
+			if (GetFirstPos(i))
+			{
+				DrawBox(xpos, ypos, smallBox, smallBox, bHover ? m_SelectedBoxColor : m_BoxColor, bHover ? ALPHA_SEL : ALPHA_NORMAL, i + 1);
+				AddMenuHit(xpos, ypos, smallBox, smallBox, HIT_BUCKET, i, 0);
+			}
+			else
+			{
+				DrawBox(xpos, ypos, smallBox, smallBox, m_EmptyBoxColor, ALPHA_NORMAL, -1);
+			}
+
+			xpos += smallBox;
+		}
+
+		ypos = 0;
+		xpos += gap;
+	}
+
+	// Stage 3: every unlocked weapon for the clicked cell, centred on screen
+	if (m_iMenuBucket >= 0 && m_iMenuCell >= 0)
+	{
+		CUtlVector<C_BaseCombatWeapon*> variants;
+		pPlayer->GetCellWeapons(m_iMenuBucket, m_iMenuCell, variants);
+
+		if (variants.Count() > 0)
+		{
+			C_BaseCombatWeapon* pCurrent = pPlayer->GetCellWeapon(m_iMenuBucket, m_iMenuCell);
+
+			int sw, st;
+			surface()->GetScreenSize(sw, st);
+			int cx = sw / 2, cy = st / 2;
+			ScreenToLocal(cx, cy);
+
+			int total = variants.Count() * boxWide + (variants.Count() - 1) * gap;
+			int vx = cx - total / 2;
+			int vy = cy - boxTall / 2;
+
+			for (int i = 0; i < variants.Count(); i++)
+			{
+				C_BaseCombatWeapon* pWeapon = variants[i];
+				bool bHover = CursorIn(mx, my, vx, vy, boxWide, boxTall);
+				bool bSel = bHover || pWeapon == pCurrent;
+
+				DrawLargeWeaponBox(pWeapon, bSel, vx, vy, boxWide, boxTall,
+					bSel ? m_SelectedBoxColor : m_BoxColor,
+					ALPHA_SEL, -1);
+
+				AddMenuHit(vx, vy, boxWide, boxTall, HIT_VARIANT, pWeapon->entindex(), 0);
+				vx += boxWide + gap;
+			}
+		}
+	}
+
+	// Cursor
+	surface()->DrawSetColor(0, 0, 0, 255);
+	surface()->DrawFilledRect(mx - 1, my - 1, mx + 9, my + 9);
+	surface()->DrawSetColor(255, 255, 255, 255);
+	surface()->DrawFilledRect(mx, my, mx + 8, my + 8);
+}
+
+//-----------------------------------------------------------------------------
+// Entry points for the console and in_main.cpp
+//-----------------------------------------------------------------------------
+CON_COMMAND(ez2_inventory, "Opens/closes the weapon inventory menu")
+{
+	CHudWeaponSelection* pHud = GET_HUDELEMENT(CHudWeaponSelection);
+	if (pHud)
+		pHud->ToggleInvMenu();
+}
+
+bool EZ2Inv_IsOpen()
+{
+	CHudWeaponSelection* pHud = GET_HUDELEMENT(CHudWeaponSelection);
+	return pHud && pHud->IsInvMenuOpen();
+}
+
+void EZ2Inv_MouseMove(float dx, float dy)
+{
+	CHudWeaponSelection* pHud = GET_HUDELEMENT(CHudWeaponSelection);
+	if (pHud)
+		pHud->InvMenuMouseMove(dx, dy);
+}
+
+void EZ2Inv_Click()
+{
+	CHudWeaponSelection* pHud = GET_HUDELEMENT(CHudWeaponSelection);
+	if (pHud)
+		pHud->InvMenuClick();
+}
+
+void EZ2Inv_Back()
+{
+	CHudWeaponSelection* pHud = GET_HUDELEMENT(CHudWeaponSelection);
+	if (pHud)
+		pHud->InvMenuBack();
+}
+#endif
+// end of inventory

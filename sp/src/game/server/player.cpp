@@ -6073,8 +6073,10 @@ CBaseEntity	*CBasePlayer::GiveNamedItem( const char *pszName, int iSubType )
 	}
 
 	DispatchSpawn( pent );
-
-#ifdef MAPBASE
+	// inventory
+#if defined(MAPBASE) && !defined(EZ2)
+//#ifdef MAPBASE
+	// end of inventory
 	if ( pWeapon )
 	{
 		for (int i=0;i<MAX_WEAPONS;i++) 
@@ -7184,7 +7186,10 @@ bool CBasePlayer::BumpWeapon( CBaseCombatWeapon *pWeapon )
 			return false;
 		}
 	}
-#ifdef MAPBASE
+// inventory
+//#ifdef MAPBASE
+	#if defined(MAPBASE) && !defined(EZ2)
+// 	   // end of inventory
 	// --------------------------------------------------------------------------------
 	// If we own a weapon in the same position take the ammo but leave the weapon behind
 	// --------------------------------------------------------------------------------
@@ -7238,6 +7243,8 @@ bool CBasePlayer::BumpWeapon( CBaseCombatWeapon *pWeapon )
 #ifdef EZ2
 		// If this weapon is set to "PreventPlayerSwap", check if there's another weapon in the same slot.
 		// If there is, do not pick up the weapon.
+		//inventory
+		/*
 		if (pWeapon->GetWpnData().m_bPreventPlayerSwap)
 		{
 			for (int i=0; i<MAX_WEAPONS; i++)
@@ -7250,6 +7257,8 @@ bool CBasePlayer::BumpWeapon( CBaseCombatWeapon *pWeapon )
 				}
 			}
 		}
+		*/
+		//end of inventory
 #endif
 
 		pWeapon->CheckRespawn();
@@ -8141,6 +8150,27 @@ void CBasePlayer::Weapon_Equip( CBaseCombatWeapon *pWeapon )
 		bShouldSwitch = true;
 	}
 #endif//HL2_DLL
+
+	//inventory
+#ifdef EZ2
+// Inventory variants: picking up a second weapon for an occupied cell
+// should not steal the cell or autoswitch away from the current weapon.
+	if (bShouldSwitch)
+	{
+		for (int i = 0; i < MAX_WEAPONS; i++)
+		{
+			CBaseCombatWeapon* pOther = m_hMyWeapons[i].Get();
+			if (pOther && pOther != pWeapon &&
+				pOther->GetSlot() == pWeapon->GetSlot() &&
+				pOther->GetPosition() == pWeapon->GetPosition())
+			{
+				bShouldSwitch = false;
+				break;
+			}
+		}
+	}
+#endif
+	// end of inventory
 
 	// should we switch to this item?
 	if ( bShouldSwitch )

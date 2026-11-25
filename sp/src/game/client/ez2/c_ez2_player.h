@@ -6,6 +6,14 @@
 
 #include "c_basehlplayer.h"
 
+// invetory
+#ifndef EZ2_INV_SLOTS
+#define EZ2_INV_SLOTS		6
+#define EZ2_INV_POSITIONS	12
+#define EZ2_INV_CELLS		(EZ2_INV_SLOTS * EZ2_INV_POSITIONS)
+// end of inventory
+#endif
+
 class C_PointDetonatable : public C_BaseEntity
 {
 public:
@@ -32,6 +40,15 @@ public:
 
 	C_EZ2_Player();
 	~C_EZ2_Player();
+
+	//invetory
+		// Inventory variants: the weapon currently shown in a bucket/position cell
+	C_BaseCombatWeapon* GetCellWeapon(int slot, int pos);
+	// Every owned weapon in that cell (for the variant picker)
+	int		GetCellWeapons(int slot, int pos, CUtlVector<C_BaseCombatWeapon*>& out);
+
+	CHandle<C_BaseCombatWeapon>	m_hCellChoice[EZ2_INV_CELLS];
+	// end of inventory
 
 	void	OnDataChanged( DataUpdateType_t updateType );
 	void	SetCCWeights();

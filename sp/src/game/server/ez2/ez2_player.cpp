@@ -54,6 +54,10 @@ PRECACHE_REGISTER(player);
 BEGIN_DATADESC(CEZ2_Player)
 	DEFINE_FIELD(m_bInAScript, FIELD_BOOLEAN),
 
+	//inventory
+	DEFINE_AUTO_ARRAY(m_hCellChoice, FIELD_EHANDLE),
+	//end of inventory
+
 	DEFINE_FIELD(m_hStaringEntity, FIELD_EHANDLE),
 	DEFINE_FIELD(m_flCurrentStaringTime, FIELD_TIME),
 
@@ -114,6 +118,9 @@ IMPLEMENT_SERVERCLASS_ST(CEZ2_Player, DT_EZ2_Player)
 	SendPropBool( SENDINFO( m_bUseNVG ) ),
 	SendPropBool( SENDINFO( m_bBonusChallengeUpdate ) ),
 	SendPropEHandle( SENDINFO( m_hWarningTarget ) ),
+	//inventory
+	SendPropArray3(SENDINFO_ARRAY3(m_hCellChoice), SendPropEHandle(SENDINFO_ARRAY(m_hCellChoice))),
+	//end of inventory
 END_SEND_TABLE()
 
 /*
@@ -495,7 +502,7 @@ CEZ2_Player::CEZ2_Player()
 	AddSightEvent( g_SightHintSurrenderedMedic );
 	AddSightEvent( g_SightIncomingSMGGrenade );
 
-	m_bUseNVG = true;
+	m_bUseNVG = false;
 
 	if (sv_bonus_challenge.GetInt() != EZ_CHALLENGE_NONE)
 	{
@@ -2008,10 +2015,95 @@ bool CEZ2_Player::HandleRemoveFromPlayerSquad( CAI_BaseNPC *pNPC )
 	return SpeakIfAllowed(TLK_COMMAND_REMOVE);
 }
 
+//Inventory
+static inline int EZ2Inv_CellIndex(int slot, int pos)
+{
+	if (slot < 0 || slot >= EZ2_INV_SLOTS || pos < 0 || pos >= EZ2_INV_POSITIONS)
+		return -1;
+	return slot * EZ2_INV_POSITIONS + pos;
+}
+
+void CEZ2_Player::SetCellChoice(CBaseCombatWeapon* pWeapon)
+{
+	if (!pWeapon)
+		return;
+
+	int iCell = EZ2Inv_CellIndex(pWeapon->GetSlot(), pWeapon->GetPosition());
+	if (iCell < 0)
+		return;
+
+	if (m_hCellChoice[iCell].Get() != pWeapon)
+		m_hCellChoice.Set(iCell, pWeapon);
+}
+
+// A newly picked up weapon only takes over the cell if nothing valid is showing there yet
+void CEZ2_Player::SetCellChoiceIfEmpty(CBaseCombatWeapon* pWeapon)
+{
+	if (!pWeapon)
+		return;
+
+	int iCell = EZ2Inv_CellIndex(pWeapon->GetSlot(), pWeapon->GetPosition());
+	if (iCell < 0)
+		return;
+
+	CBaseCombatWeapon* pCurrent = m_hCellChoice[iCell].Get();
+	if (pCurrent && pCurrent != pWeapon && pCurrent->GetOwner() == this)
+		return;
+
+	m_hCellChoice.Set(iCell, pWeapon);
+}
+
+void CEZ2_Player::Weapon_HandleEquip(CBaseCombatWeapon* pWeapon)
+{
+	BaseClass::Weapon_HandleEquip(pWeapon);
+
+	// (not owned by us if it was merged as a dual weapon)
+	if (pWeapon->GetOwner() == this)
+		SetCellChoiceIfEmpty(pWeapon);
+
+	// Make sure Wilson doesn't remind us of our special weapons for at least 20 minutes
+	if (FClassnameIs(pWeapon, "weapon_hopwire"))
+	{
+		AddContext("xen_grenade_thrown", "1", gpGlobals->curtime + 1200.0f);
+	}
+	else if (FClassnameIs(pWeapon, "weapon_displacer_pistol"))
+	{
+		AddContext("displacer_used", "1", gpGlobals->curtime + 1200.0f);
+	}
+}
+
+// Whatever we actually switch to becomes the visible variant for its cell
+bool CEZ2_Player::Weapon_Switch(CBaseCombatWeapon* pWeapon, int viewmodelindex)
+{
+	bool bSwitched = BaseClass::Weapon_Switch(pWeapon, viewmodelindex);
+	if (bSwitched && pWeapon)
+		SetCellChoice(pWeapon);
+	return bSwitched;
+}
+
+// Sent by the HUD inventory menu: "ez2_inv_select <weapon entindex>"
+bool CEZ2_Player::ClientCommand(const CCommand& args)
+{
+	if (FStrEq(args[0], "ez2_inv_select") && args.ArgC() > 1)
+	{
+		CBaseEntity* pEnt = UTIL_EntityByIndex(atoi(args[1]));
+		CBaseCombatWeapon* pWeapon = pEnt ? pEnt->MyCombatWeaponPointer() : NULL;
+		if (pWeapon && pWeapon->GetOwner() == this)
+		{
+			SetCellChoice(pWeapon);
+
+			if (pWeapon != GetActiveWeapon() && Weapon_CanSwitchTo(pWeapon))
+				Weapon_Switch(pWeapon);
+		}
+		return true;
+	}
+
+	return BaseClass::ClientCommand(args);
+}
 //-----------------------------------------------------------------------------
-// Purpose: 
+// Purpose: OLD
 //-----------------------------------------------------------------------------
-void CEZ2_Player::Weapon_HandleEquip( CBaseCombatWeapon *pWeapon )
+/*void CEZ2_Player::Weapon_HandleEquip(CBaseCombatWeapon* pWeapon)
 {
 	BaseClass::Weapon_HandleEquip( pWeapon );
 
@@ -2025,6 +2117,9 @@ void CEZ2_Player::Weapon_HandleEquip( CBaseCombatWeapon *pWeapon )
 		AddContext( "displacer_used", "1", gpGlobals->curtime + 1200.0f);
 	}
 }
+*/
+
+// end of inventory
 
 //-----------------------------------------------------------------------------
 // Purpose:	Equips a dual weapon

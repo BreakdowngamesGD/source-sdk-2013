@@ -1,0 +1,1 @@
+devtools\bin\vpc.exe /define:VS2022 /mod_ez2 +client /2022

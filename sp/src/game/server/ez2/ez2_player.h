@@ -19,6 +19,14 @@
 #include "ai_concept_response.h"
 #include "GameEventListener.h"
 
+//inventory
+#ifndef EZ2_INV_SLOTS
+#define EZ2_INV_SLOTS		6
+#define EZ2_INV_POSITIONS	12
+#define EZ2_INV_CELLS		(EZ2_INV_SLOTS * EZ2_INV_POSITIONS)
+#endif
+//end of inventory
+
 class CAI_PlayerNPCDummy;
 class CEZ2_Player;
 struct SightEvent_t;
@@ -66,7 +74,7 @@ public:
 	int				GetLastDamageType() { return m_iLastDamageType; }
 	int				GetLastDamageAmount() { return m_iLastDamageAmount; }
 	CBaseEntity		*GetLastDamageAttacker() { return m_hLastDamageAttacker.Get(); }
-
+	
 	// Criteria sets
 	void			AppendLastDamageCriteria( AI_CriteriaSet& set );
 	void			AppendKilledEnemyCriteria( AI_CriteriaSet& set );
@@ -110,6 +118,15 @@ class CEZ2_Player : public CAI_ExpresserHost<CHL2_Player>, public CGameEventList
 public:
 
 	CEZ2_Player();
+
+	//inventory
+	bool			Weapon_Switch(CBaseCombatWeapon* pWeapon, int viewmodelindex = 0);
+	bool			ClientCommand(const CCommand& args);
+
+	// Inventory variants
+	void			SetCellChoice(CBaseCombatWeapon* pWeapon);
+	void			SetCellChoiceIfEmpty(CBaseCombatWeapon* pWeapon);
+	//end of inventory
 
 	void			Precache( void );
 	void			Spawn( void );
@@ -293,6 +310,11 @@ protected:
 
 private:
 	CAI_Expresser * m_pExpresser;
+
+	//inventory
+    //The variant shown in each bucket/position cell of the weapon HUD
+	CNetworkArray(CHandle<CBaseCombatWeapon>, m_hCellChoice, EZ2_INV_CELLS);
+	//end of inventory
 
 	bool			m_bInAScript;
 

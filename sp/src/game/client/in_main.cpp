@@ -25,6 +25,23 @@
 #include <ctype.h> // isalnum()
 #include <voice_status.h>
 #include "cam_thirdperson.h"
+#include "inputsystem/iinputsystem.h"
+
+// inventory
+#ifdef EZ2
+extern bool EZ2Inv_IsOpen();
+extern void EZ2Inv_MouseMove(float dx, float dy);
+extern void EZ2Inv_Click();
+extern void EZ2Inv_Back();
+#else
+static inline bool EZ2Inv_IsOpen() { return false; }
+static inline void EZ2Inv_MouseMove(float, float) {}
+static inline void EZ2Inv_Click() {}
+static inline void EZ2Inv_Back() {}
+#endif
+static bool s_bInvPrevAttack = false;
+static bool s_bInvPrevAttack2 = false;
+// end of inventory
 
 #ifdef SIXENSE
 #include "sixense/in_sixense.h"
@@ -41,6 +58,8 @@
 // NVNT Include
 #include "haptics/haptic_utils.h"
 #include <vgui/ISurface.h>
+
+extern IInputSystem* inputsystem;
 
 extern ConVar in_joystick;
 extern ConVar cam_idealpitch;
@@ -1081,8 +1100,10 @@ void CInput::ExtraMouseSample( float frametime, bool active )
 	QAngle viewangles;
 	engine->GetViewAngles( viewangles );
 	QAngle originalViewangles = viewangles;
-
-	if ( active )
+	// invnetory
+	if ( active && !EZ2Inv_IsOpen() )
+	// if ( active )
+	// end of inventory
 	{
 		// Determine view angles
 		AdjustAngles ( frametime );
@@ -1211,7 +1232,78 @@ void CInput::CreateMove ( int sequence_number, float input_sample_frametime, boo
 		}
 	}
 #endif
+	// inventory
+	const bool bInvMenu = EZ2Inv_IsOpen();
 
+	if (active || sv_noclipduringpause.GetInt())
+	{
+		if (bInvMenu)
+		{
+			if (!m_fCameraInterceptingMouse && m_fMouseActive)
+			{
+				// Read raw mouse movement directly (doesn't depend on AccumulateMouse)
+				int rx = 0, ry = 0;
+				inputsystem->GetRawMouseAccumulators(rx, ry);
+
+				// also grab whatever the normal path accumulated, in case raw input is off
+				float mx = 0, my = 0;
+				GetAccumulatedMouseDeltasAndResetAccumulators(&mx, &my);
+
+				if (rx || ry)
+				{
+					mx = (float)rx;
+					my = (float)ry;
+				}
+
+				ResetMouse();
+				EZ2Inv_MouseMove(mx, my);
+			}
+
+			ComputeSideMove(cmd);
+			ComputeUpwardMove(cmd);
+			ComputeForwardMove(cmd);
+		}
+		else
+		{
+			// Determine view angles
+			AdjustAngles(input_sample_frametime);
+
+			// Determine sideways movement
+			ComputeSideMove(cmd);
+
+			// Determine vertical movement
+			ComputeUpwardMove(cmd);
+
+			// Determine forward movement
+			ComputeForwardMove(cmd);
+
+			// Scale based on holding speed key or having too fast of a velocity based on client maximum
+			//  speed.
+			ScaleMovements(cmd);
+
+			// Allow mice and other controllers to add their inputs
+			ControllerMove(input_sample_frametime, cmd);
+#ifdef SIXENSE
+			g_pSixenseInput->SixenseFrame(input_sample_frametime, cmd);
+
+			if (g_pSixenseInput->IsEnabled())
+			{
+				g_pSixenseInput->SetView(input_sample_frametime, cmd);
+			}
+#endif
+		}
+	}
+	else
+	{
+		// need to run and reset mouse input so that there is no view pop when unpausing
+		if (!m_fCameraInterceptingMouse && m_fMouseActive)
+		{
+			float mx, my;
+			GetAccumulatedMouseDeltasAndResetAccumulators(&mx, &my);
+			ResetMouse();
+		}
+	}
+	/*
 	if ( active || sv_noclipduringpause.GetInt() )
 	{
 		// Determine view angles
@@ -1251,6 +1343,8 @@ void CInput::CreateMove ( int sequence_number, float input_sample_frametime, boo
 			ResetMouse();
 		}
 	}
+	*/
+	// end of inventory
 	// Retreive view angles from engine ( could have been set in IN_AdjustAngles above )
 	engine->GetViewAngles( viewangles );
 
@@ -1285,6 +1379,27 @@ void CInput::CreateMove ( int sequence_number, float input_sample_frametime, boo
 	// Set button and flag bits
 	cmd->buttons = GetButtonBits( 1 );
 #endif
+	// inventory
+		// Inventory menu: clicks drive the menu and never reach the weapon
+	{
+		bool bAtk1 = (cmd->buttons & IN_ATTACK) != 0;
+		bool bAtk2 = (cmd->buttons & IN_ATTACK2) != 0;
+
+		if (bInvMenu)
+		{
+			if (bAtk1 && !s_bInvPrevAttack)
+				EZ2Inv_Click();
+			if (bAtk2 && !s_bInvPrevAttack2)
+				EZ2Inv_Back();
+
+			cmd->buttons &= ~(IN_ATTACK | IN_ATTACK2);
+		}
+
+		// while closed, keep tracking so a held button doesn't register as a click on open
+		s_bInvPrevAttack = bAtk1;
+		s_bInvPrevAttack2 = bAtk2;
+	}
+	// end of inventory
 
 	// Using joystick?
 #ifdef SIXENSE

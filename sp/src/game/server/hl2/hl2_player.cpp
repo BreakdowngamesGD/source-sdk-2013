@@ -155,7 +155,7 @@ enum
 	INFINITE_SPRINT_TRUE,		// Only sprinting is affected, other suit devices continue to drain power
 };
 
-ConVar sv_infinite_sprint_power( "sv_infinite_sprint_power", "1", FCVAR_CHEAT );
+ConVar sv_infinite_sprint_power( "sv_infinite_sprint_power", "0", FCVAR_CHEAT );
 
 ConVar sv_infinite_flashlight_power( "sv_infinite_flashlight_power", "0", FCVAR_CHEAT );
 ConVar sv_player_death_smell( "sv_player_death_smell", "1", FCVAR_REPLICATED );

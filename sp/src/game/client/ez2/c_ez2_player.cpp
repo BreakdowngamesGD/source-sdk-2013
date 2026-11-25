@@ -43,6 +43,9 @@ IMPLEMENT_CLIENTCLASS_DT( C_EZ2_Player, DT_EZ2_Player, CEZ2_Player )
 	RecvPropBool( RECVINFO( m_bUseNVG ) ),
 	RecvPropBool( RECVINFO( m_bBonusChallengeUpdate ) ),
 	RecvPropEHandle( RECVINFO( m_hWarningTarget ) ),
+	// inventory
+	RecvPropArray3(RECVINFO_ARRAY(m_hCellChoice), RecvPropEHandle(RECVINFO(m_hCellChoice[0]))),
+	// end of inventory
 END_RECV_TABLE()
 
 BEGIN_PREDICTION_DATA( C_EZ2_Player )
@@ -214,6 +217,40 @@ void C_EZ2_Player::DestroyGlowTargetEffect( void )
 		m_pGlowTargetEffect = NULL;
 	}
 }
+
+//Inventory
+C_BaseCombatWeapon* C_EZ2_Player::GetCellWeapon(int slot, int pos)
+{
+	if (slot >= 0 && slot < EZ2_INV_SLOTS && pos >= 0 && pos < EZ2_INV_POSITIONS)
+	{
+		C_BaseCombatWeapon* pChoice = m_hCellChoice[slot * EZ2_INV_POSITIONS + pos].Get();
+		if (pChoice && pChoice->GetOwner() == this && pChoice->GetSlot() == slot && pChoice->GetPosition() == pos)
+			return pChoice;
+	}
+
+	// No (valid) choice: fall back to the first owned weapon in the cell
+	for (int i = 0; i < MAX_WEAPONS; i++)
+	{
+		C_BaseCombatWeapon* pWeapon = GetWeapon(i);
+		if (pWeapon && pWeapon->GetSlot() == slot && pWeapon->GetPosition() == pos)
+			return pWeapon;
+	}
+
+	return NULL;
+}
+
+int C_EZ2_Player::GetCellWeapons(int slot, int pos, CUtlVector<C_BaseCombatWeapon*>& out)
+{
+	out.RemoveAll();
+	for (int i = 0; i < MAX_WEAPONS; i++)
+	{
+		C_BaseCombatWeapon* pWeapon = GetWeapon(i);
+		if (pWeapon && pWeapon->GetSlot() == slot && pWeapon->GetPosition() == pos)
+			out.AddToTail(pWeapon);
+	}
+	return out.Count();
+}
+// end of inventory
 
 //-----------------------------------------------------------------------------
 // Purpose: 
