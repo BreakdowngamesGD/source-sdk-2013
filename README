@@ -3,9 +3,12 @@
 This repository contains the code for the Half-Life 2 modifications Entropy : Zero (EZ1) and Entropy : Zero 2 (EZ2).
 https://store.steampowered.com/app/714070/Entropy__Zero/
 
+It also now contains code for the Entropy Zero 2, and Half-Life 2 mod: Half-Life^2 // Zero
+adding early navmesh support, new weapons, Rusisan Army, and basic HLA NPCs
+
 The manhack weapon was originally created by the Half-Life 2: Short Stories Team for Human Error (HE) and modified for EZ. Likewise the drivable Combine APC was originally created by the Half-Life 2: Short Stories Team for HE and has been adapted for EZ2. The original v1 and v2 EZ1 code changes were originally made by Breadman AKA John Richardson. They have been adapted with preprocessor directives "EZ" and "EZ1" to separate them from the original Source SDK 2013 code.
 
-Entropy : Zero 2 makes use of the Improved Advisor created by Alex 'Maestra Fénix' Bravo.
+Entropy : Zero 2 makes use of the Improved Advisor created by Alex 'Maestra FÃ©nix' Bravo.
 https://github.com/MaestroFenix/ImprovedAdvisor
 
 To set up a mod for Entropy : Zero or Entropy : Zero 2, run the batch script sp/src/createentropyzeroproject.bat. This will use VPC to generate two solution files, entropyzero.sln and entropyzero2.sln. Currently, Visual Studio 2022 (NOT Visual Studio 2013) must be installed to use these projects.
@@ -279,7 +282,7 @@ THIS DOCUMENT DESCRIBES A CONTRACT BETWEEN YOU AND VALVE
 CORPORATION ("Valve").  PLEASE READ IT BEFORE DOWNLOADING OR USING 
 THE SOURCE ENGINE SDK ("SDK"). BY DOWNLOADING AND/OR USING THE 
 SOURCE ENGINE SDK YOU ACCEPT THIS LICENSE. IF YOU DO NOT AGREE TO 
-THE TERMS OF THIS LICENSE PLEASE DON’T DOWNLOAD OR USE THE SDK.  
+THE TERMS OF THIS LICENSE PLEASE DONÂ’T DOWNLOAD OR USE THE SDK.  
 
   You may, free of charge, download and use the SDK to develop a modified Valve game 
 running on the Source engine.  You may distribute your modified Valve game in source and 
