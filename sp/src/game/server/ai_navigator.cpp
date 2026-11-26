@@ -32,6 +32,9 @@
 #include "props.h"
 #include "physics_npc_solver.h"
 
+#include "hlz/NavMeshManager.h"
+#include "hlz/NavMeshDynamic.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -3496,6 +3499,17 @@ bool CAI_Navigator::MarkCurWaypointFailedLink( void )
 
 	int startID =	GetPath()->GetLastNodeReached();
 	int endID	=	GetPath()->GetCurWaypoint()->iNodeID;
+
+	// Navmesh waypoints have no node IDs: block the failing spot briefly so the repath routes around it
+	if (endID == NO_NODE)
+	{
+		if (g_EZ2NavMeshManager.ShouldUseNavMesh())
+		{
+			EZ2_NavMarkBlocked(GetPath()->CurWaypointPos(), 32.0f, 4.0f);
+			return true;
+		}
+		return false;
+	}
 
 	if ( endID != NO_NODE )
 	{

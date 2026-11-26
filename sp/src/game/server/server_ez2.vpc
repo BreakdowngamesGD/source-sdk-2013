@@ -13,17 +13,59 @@ $Configuration
 {
 	$Compiler
 	{
-		$AdditionalIncludeDirectories	"$BASE;$SRCDIR\game\shared\hl2;$SRCDIR\game\shared\episodic;.\hl2;.\episodic; .\ez1 .\ez2"
-		$PreprocessorDefinitions		"$BASE;HL2_DLL;HL2_EPISODIC;EZ;EZ2;COMPANION_MELEE_ATTACK;HE_APC;GLOWS_ENABLE;USES_SAVERESTORE"
-		$PreprocessorDefinitions		"$BASE;EZ2_DEMO" [$EZ2_DEMO]
-		$PreprocessorDefinitions		"$BASE;CSS_WEAPONS_IN_HL2"
+	$AdditionalIncludeDirectories	"$BASE;$SRCDIR\game\shared\hl2;$SRCDIR\game\shared\episodic;.\hl2;.\episodic;.\ez1;.\ez2;$SRCDIR\thirdparty\recastnavigation\Recast\Include;$SRCDIR\thirdparty\recastnavigation\Detour\Include;$SRCDIR\thirdparty\recastnavigation\DetourCrowd\Include;$SRCDIR\thirdparty\recastnavigation\DetourTileCache\Include;$SRCDIR\thirdparty\recastnavigation\DebugUtils\Include"
+	$PreprocessorDefinitions		"$BASE;HL2_DLL;HL2_EPISODIC;EZ;EZ2;COMPANION_MELEE_ATTACK;HE_APC;GLOWS_ENABLE;USES_SAVERESTORE"
+	$PreprocessorDefinitions		"$BASE;EZ2_DEMO" [$EZ2_DEMO]
+	$PreprocessorDefinitions		"$BASE;CSS_WEAPONS_IN_HL2"
 	}
 }
 
 $Project "Server (Entropy Zero 2)"
 {
 	$Folder	"Source Files"
-	{	
+	{
+		$Folder	"Recast Navigation"
+		{
+			$File	"$SRCDIR\thirdparty\recastnavigation\DebugUtils\Source\DebugDraw.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DebugUtils\Source\DetourDebugDraw.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DebugUtils\Source\RecastDebugDraw.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DebugUtils\Source\RecastDump.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Detour\Source\DetourAlloc.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Detour\Source\DetourAssert.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Detour\Source\DetourCommon.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Detour\Source\DetourNavMesh.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Detour\Source\DetourNavMeshBuilder.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Detour\Source\DetourNavMeshQuery.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Detour\Source\DetourNode.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DetourCrowd\Source\DetourCrowd.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DetourCrowd\Source\DetourLocalBoundary.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DetourCrowd\Source\DetourObstacleAvoidance.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DetourCrowd\Source\DetourPathCorridor.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DetourCrowd\Source\DetourPathQueue.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DetourCrowd\Source\DetourProximityGrid.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DetourTileCache\Source\DetourTileCache.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\DetourTileCache\Source\DetourTileCacheBuilder.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\Recast.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\RecastAlloc.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\RecastArea.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\RecastAssert.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\RecastContour.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\RecastFilter.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\RecastLayers.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\RecastMesh.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\RecastMeshDetail.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\RecastRasterization.cpp" \
+					"$SRCDIR\thirdparty\recastnavigation\Recast\Source\RecastRegion.cpp"
+			{
+				$Configuration
+				{
+					$Compiler
+					{
+						$Create/UsePrecompiledHeader	"Not Using Precompiled Headers"
+					}
+				}
+			}
+		}
 		$Folder	"EZ1 DLL"
 		{
 			$File	"ez1\weapon_ManhackToss.cpp"
@@ -33,6 +75,53 @@ $Project "Server (Entropy Zero 2)"
 			$File	"Human_Error\vehicle_drivable_apc.h"
 			$File	"Human_Error\vehicle_drivable_apc.cpp"
 			$File	"Human_Error\hlss_weapon_id.h"
+		}
+		$Folder	"aHLZ DLL"
+		{
+			$File	"hlz\npc_combine_hla.h"
+			$File	"hlz\npc_combine_hla.cpp"
+			$File	"hlz\npc_combine_grunt.cpp"
+			$File	"hlz\npc_combine_ordinal.cpp"
+			$File	"hlz\npc_combine_suppressor.cpp"
+			$File	"hlz\npc_combine_wallhammer.cpp"
+			$File	"hlz\npc_soldat.h"
+			$File	"hlz\npc_soldat.cpp"
+			$File	"hlz\hlz_weapons.h"
+			$File	"hlz\hlz_weapons.cpp"
+			$File	"hlz\navmeshmanager.h"
+			$File	"hlz\navmeshmanager.cpp"
+			$File	"hlz\NavMeshBuilder_Full.h"
+			$File	"hlz\NavMeshBuilder_Full.cpp"
+			$File	"hlz\NavMeshBuilder_Node.h"
+			$File	"hlz\NavMeshBuilder_Node.cpp"
+			$File	"hlz\navmesh_bspextract.cpp"
+			$File	"hlz\navmesh_debugdraw.cpp"
+			$File	"hlz\NavMeshCover.h"
+			$File	"hlz\NavMeshCover.cpp"
+			$File	"hlz\navmesh_coverbake.cpp"
+			$File	"hlz\NavMeshDynamic.h"
+			$File	"hlz\navmesh_dynamic.cpp"
+			$File	"hlz\navmesh_route.cpp"
+		{
+			$Configuration
+			{
+				$Compiler
+				{
+					$Create/UsePrecompiledHeader	"Not Using Precompiled Headers"
+				}
+			}
+		}
+			$File	"hlz\NavMeshBuilder_Node.h"
+			$File	"hlz\NavMeshBuilder_Node.cpp"
+			{
+				$Configuration
+				{
+					$Compiler
+					{
+						$Create/UsePrecompiledHeader	"Not Using Precompiled Headers"
+					}
+				}
+			}
 		}
 		$Folder	"EZ2 DLL"
 		{

@@ -58,6 +58,8 @@
 #include "gameinterface.h"
 #include "eventqueue.h"
 #include "hltvdirector.h"
+//NAVMESH
+#include "hlz/navmeshmanager.h"
 #if defined( REPLAY_ENABLED )
 #include "replay/iserverreplaycontext.h"
 #endif
@@ -812,6 +814,9 @@ void CServerGameDLL::DLLShutdown( void )
 	}
 	g_TextStatsMgr.WriteFile( filesystem );
 
+	//navmesh
+	g_EZ2NavMeshManager.Shutdown();
+
 	IGameSystem::ShutdownAllSystems();
 
 #ifdef CSTRIKE_DLL // BOTPORT: TODO: move these ifdefs out
@@ -1163,6 +1168,22 @@ void CServerGameDLL::ServerActivate( edict_t *pEdictList, int edictCount, int cl
 	if ( !g_pDeveloper->GetInt() )
 	{
 		think_limit.SetValue( 0 );
+	}
+
+	const char* pszMapName = (gpGlobals && gpGlobals->mapname != NULL_STRING) ? STRING(gpGlobals->mapname) : NULL;
+	EZ2_NavMode_t navMode = g_EZ2NavMeshManager.GetActiveModeForMap(pszMapName);
+
+	if (navMode == EZ2_NAV_MESH_FULL)
+	{
+		g_EZ2NavMeshManager.LoadForMap(pszMapName, EZ2_NAV_PROFILE_FULL);
+	}
+	else if (navMode == EZ2_NAV_MESH_NODEGRAPH)
+	{
+		g_EZ2NavMeshManager.LoadForMap(pszMapName, EZ2_NAV_PROFILE_NODEGRAPH);
+	}
+	else
+	{
+		g_EZ2NavMeshManager.UnloadMap();
 	}
 
 #ifndef _XBOX

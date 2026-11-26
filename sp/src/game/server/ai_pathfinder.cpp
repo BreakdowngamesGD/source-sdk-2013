@@ -25,6 +25,11 @@
 //@todo: bad dependency!
 #include "ai_navigator.h"
 
+#include "hlz/NavMeshManager.h"
+struct AI_Waypoint_t;
+AI_Waypoint_t* EZ2_NavBuildRoute(CAI_BaseNPC* pNPC, const Vector& vStart, const Vector& vEnd, float goalTolerance);
+bool EZ2_NavShouldHandleNPC(CAI_BaseNPC* pNPC);
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -1452,9 +1457,23 @@ AI_Waypoint_t *CAI_Pathfinder::BuildRoute( const Vector &vStart, const Vector &v
 	}
 
 	//  If the fails, try a node route
-	if ( !pResult )
+	// Navmesh replaces the node route for ground NPCs (nodegraph stays as fallback)
+	if (!pResult && curNavType != NAV_CLIMB && EZ2_NavShouldHandleNPC(GetOuter()))
 	{
-		pResult = BuildNodeRoute( vStart, vEnd, buildFlags, goalTolerance );
+		pResult = EZ2_NavBuildRoute(GetOuter(), vStart, vEnd, goalTolerance);
+
+		static ConVarRef s_fallback("ez2_nav_fallback_to_nodegraph");
+		if (!pResult && !s_fallback.GetBool())
+		{
+			m_bIgnoreStaleLinks = false;
+			return NULL;
+		}
+	}
+
+	//  Otherwise (flyers, climbers, wide hulls, no mesh, or navmesh failed + fallback on): node route
+	if (!pResult)
+	{
+		pResult = BuildNodeRoute(vStart, vEnd, buildFlags, goalTolerance);
 	}
 
 	m_bIgnoreStaleLinks = false;
