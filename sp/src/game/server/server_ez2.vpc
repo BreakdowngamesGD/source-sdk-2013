@@ -17,6 +17,7 @@ $Configuration
 	$PreprocessorDefinitions		"$BASE;HL2_DLL;HL2_EPISODIC;EZ;EZ2;COMPANION_MELEE_ATTACK;HE_APC;GLOWS_ENABLE;USES_SAVERESTORE"
 	$PreprocessorDefinitions		"$BASE;EZ2_DEMO" [$EZ2_DEMO]
 	$PreprocessorDefinitions		"$BASE;CSS_WEAPONS_IN_HL2"
+	$PreprocessorDefinitions		"$BASE;DT_VIRTUAL_QUERYFILTER"
 	}
 }
 
@@ -102,6 +103,8 @@ $Project "Server (Entropy Zero 2)"
 			$File	"hlz\NavMeshDynamic.h"
 			$File	"hlz\navmesh_dynamic.cpp"
 			$File	"hlz\navmesh_route.cpp"
+			$File	"hlz\navmesh_jumpbake.cpp"
+			$File	"hlz\prop_emplacement.cpp"
 		{
 			$Configuration
 			{

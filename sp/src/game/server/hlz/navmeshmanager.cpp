@@ -34,7 +34,7 @@ static ConVar ez2_nav_fallback_to_nodegraph(
 namespace
 {
 	static const unsigned int EZ2_NAV_MAGIC = 0x325A454E; // "NEZ2"
-	static const int EZ2_NAV_VERSION = 2;
+	static const int EZ2_NAV_VERSION = 3;
 
 #pragma pack(push, 1)
 	struct SoloNavFileHeader_t
@@ -107,6 +107,7 @@ void CEZ2_NavMeshManager::UnloadMap()
 {
 	FreeQueryOnly();
 	FreeNavMeshOnly();
+	m_NavClimbs.clear();
 	m_NavHints.clear();
 	m_szLoadedMap[0] = '\0';
 }
@@ -117,29 +118,26 @@ void CEZ2_NavMeshManager::SetNavHints(const std::vector<EZ2_NavHint_t>& hints)
 	ResnapLoadedHintsToMesh();
 }
 
+void CEZ2_NavMeshManager::SnapHintToMesh(EZ2_NavHint_t & h)
+{
+	h.polyRef = 0;
+	if (!m_pNavQuery)
+		 return;
+	
+	dtQueryFilter filter;
+	const float halfExtents[3] = { 32.0f, 64.0f, 32.0f };
+	float dPos[3], nearest[3];
+	SourceToDetour(h.vecPos, dPos);
+	
+		dtPolyRef polyRef = 0;
+	if (dtStatusSucceed(m_pNavQuery->findNearestPoly(dPos, halfExtents, &filter, &polyRef, nearest)) && polyRef)
+		 h.polyRef = static_cast<unsigned int>(polyRef);
+	}
+
 void CEZ2_NavMeshManager::ResnapLoadedHintsToMesh()
 {
-	if (!m_pNavQuery)
-		return;
-
-	dtQueryFilter filter;
-	float halfExtents[3] = { 32.0f, 64.0f, 32.0f };
-
 	for (size_t i = 0; i < m_NavHints.size(); ++i)
-	{
-		float dPos[3], nearest[3];
-		SourceToDetour(m_NavHints[i].vecPos, dPos);
-
-		dtPolyRef polyRef = 0;
-		if (dtStatusSucceed(m_pNavQuery->findNearestPoly(dPos, halfExtents, &filter, &polyRef, nearest)) && polyRef)
-		{
-			m_NavHints[i].polyRef = static_cast<unsigned int>(polyRef);
-		}
-		else
-		{
-			m_NavHints[i].polyRef = 0;
-		}
-	}
+		 SnapHintToMesh(m_NavHints[i]);
 }
 
 bool CEZ2_NavMeshManager::SetNavMesh(dtNavMesh* pNavMesh, EZ2_NavProfile_t profile, int maxSearchNodes)
@@ -281,6 +279,25 @@ bool CEZ2_NavMeshManager::SaveSoloNavMesh(const char* pszFilePath, const dtNavMe
 		}
 	}
 
+		if (ok)
+	{
+		int climbCount = static_cast<int>(m_NavClimbs.size());
+		ok = (filesystem->Write(&climbCount, sizeof(int), fh) == sizeof(int));
+		for (int i = 0; i < climbCount && ok; ++i)
+		{
+			const EZ2_NavClimb_t& c = m_NavClimbs[i];
+			const float ends[6] = { c.base.x, c.base.y, c.base.z, c.top.x, c.top.y, c.top.z };
+			const int nPts = static_cast<int>(c.points.size());
+			ok = (filesystem->Write(ends, sizeof(ends), fh) == sizeof(ends)) &&
+				 (filesystem->Write(&nPts, sizeof(int), fh) == sizeof(int));
+			for (int p = 0; p < nPts && ok; ++p)
+			{
+				const float pt[4] = { c.points[p].pos.x, c.points[p].pos.y, c.points[p].pos.z, c.points[p].yaw };
+				ok = (filesystem->Write(pt, sizeof(pt), fh) == sizeof(pt));
+			}
+		}
+	}
+
 	filesystem->Close(fh);
 	return ok;
 }
@@ -326,7 +343,7 @@ bool CEZ2_NavMeshManager::LoadSoloNavMesh(const char* pszFilePath, EZ2_NavProfil
 	}
 
 	if (magic != EZ2_NAV_MAGIC ||
-		(version != 1 && version != 2) ||
+		version < 1 || version > 3 || 
 		profile != static_cast<int>(expectedProfile) ||
 		tileDataSize <= 0)
 	{
@@ -373,7 +390,53 @@ bool CEZ2_NavMeshManager::LoadSoloNavMesh(const char* pszFilePath, EZ2_NavProfil
 		}
 	}
 
+	std::vector<EZ2_NavClimb_t> loadedClimbs;
+	bool bClimbsOk = true;
+	if (version >= 3)
+	{
+		int climbCount = 0;
+		if (filesystem->Read(&climbCount, sizeof(int), fh) != sizeof(int) || climbCount < 0 || climbCount > 65536)
+			bClimbsOk = false;
+
+		for (int i = 0; bClimbsOk && i < climbCount; ++i)
+		{
+			float ends[6];
+			int nPts = 0;
+			if (filesystem->Read(ends, sizeof(ends), fh) != sizeof(ends) ||
+				filesystem->Read(&nPts, sizeof(int), fh) != sizeof(int) || nPts < 0 || nPts > 4096)
+			{
+				bClimbsOk = false;
+				break;
+			}
+
+			EZ2_NavClimb_t c;
+			c.base = Vector(ends[0], ends[1], ends[2]);
+			c.top = Vector(ends[3], ends[4], ends[5]);
+			for (int p = 0; p < nPts; ++p)
+			{
+				float pt[4];
+				if (filesystem->Read(pt, sizeof(pt), fh) != sizeof(pt))
+				{
+					bClimbsOk = false;
+					break;
+				}
+				EZ2_NavClimbPoint_t cp;
+				cp.pos = Vector(pt[0], pt[1], pt[2]);
+				cp.yaw = pt[3];
+				c.points.push_back(cp);
+			}
+			if (bClimbsOk)
+				loadedClimbs.push_back(c);
+		}
+	}
+
 	filesystem->Close(fh);
+
+	if (!bClimbsOk)
+	{
+		dtFree(pTileData);
+		return false;
+	}
 
 	dtNavMesh* pNavMesh = dtAllocNavMesh();
 	if (!pNavMesh)
@@ -400,7 +463,27 @@ bool CEZ2_NavMeshManager::LoadSoloNavMesh(const char* pszFilePath, EZ2_NavProfil
 		return false;
 
 	SetNavHints(loadedHints);
+	SetNavClimbs(loadedClimbs);
 	return true;
+}
+
+const EZ2_NavClimb_t* CEZ2_NavMeshManager::FindNavClimbNear(const Vector& pos, float radius) const
+{
+	const EZ2_NavClimb_t* pBest = NULL;
+	float flBest = radius * radius;
+	for (size_t i = 0; i < m_NavClimbs.size(); ++i)
+	{
+		const EZ2_NavClimb_t& c = m_NavClimbs[i];
+		float d = MIN(pos.DistToSqr(c.base), pos.DistToSqr(c.top));
+		for (size_t p = 0; p < c.points.size(); ++p)
+			d = MIN(d, pos.DistToSqr(c.points[p].pos));
+		if (d < flBest)
+		{
+			flBest = d;
+			pBest = &c;
+		}
+	}
+	return pBest;
 }
 
 EZ2_NavHint_t* CEZ2_NavMeshManager::FindBestNavHint(
@@ -437,6 +520,9 @@ EZ2_NavHint_t* CEZ2_NavMeshManager::FindBestNavHint(
 			continue;
 
 		if (hint.polyRef == 0 || hint.bDisabled)
+			continue;
+
+		if (EZ2_NavPointInPropCutout(hint.vecPos))
 			continue;
 
 		if (EZ2_NavGetDynStateByRef(hint.polyRef) == EZ2_NAVDYN_BLOCKED)
@@ -595,6 +681,14 @@ CON_COMMAND(ez2_nav_status, "Prints current EZ2 hybrid navigation / navmesh stat
 		g_EZ2NavMeshManager.GetNavHintCount(),
 		ez2_nav_fallback_to_nodegraph.GetBool() ? "yes" : "no"
 	);
+
+	const dtMeshTile* pStatusTile = g_EZ2NavMeshManager.GetNavMesh() ? g_EZ2NavMeshManager.GetNavMesh()->getTileAt(0, 0, 0) : NULL;
+	if (pStatusTile && pStatusTile->header)
+	{
+		Msg("[EZ2 NavMesh] Baked agent: radius %.1f, height %.1f, climb %.1f | Ladder links: %d\n",
+			pStatusTile->header->walkableRadius, pStatusTile->header->walkableHeight,
+			pStatusTile->header->walkableClimb, (int)g_EZ2NavMeshManager.GetNavClimbs().size());
+	}
 }
 
 CON_COMMAND(ez2_nav_test_path, "Tests Detour path from player to the ground spot you are looking at")

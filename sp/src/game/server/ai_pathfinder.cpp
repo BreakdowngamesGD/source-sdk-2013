@@ -28,6 +28,7 @@
 #include "hlz/NavMeshManager.h"
 struct AI_Waypoint_t;
 AI_Waypoint_t* EZ2_NavBuildRoute(CAI_BaseNPC* pNPC, const Vector& vStart, const Vector& vEnd, float goalTolerance);
+AI_Waypoint_t* EZ2_NavBuildGroundOnlyRoute(CAI_BaseNPC* pNPC, const Vector& vStart, const Vector& vEnd, float goalTolerance);
 bool EZ2_NavShouldHandleNPC(CAI_BaseNPC* pNPC);
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -856,6 +857,23 @@ AI_Waypoint_t *CAI_Pathfinder::BuildSimpleRoute( Navigation_t navType, const Vec
 	// Only allowed to jump to ground nodes
 	if ((nodeID == NO_NODE)	|| (GetNetwork()->GetNode(nodeID)->GetType() == nodeTargetType) )
 	{
+
+		if (navType == NAV_JUMP)
+		{
+			CAI_Navigator* pNav = GetOuter() ? GetOuter()->GetNavigator() : NULL;
+			if (!GetOuter() || !(GetOuter()->CapabilitiesGet() & bits_CAP_MOVE_JUMP))
+				return NULL;
+
+			if (pNav && pNav->ShouldUseGroundOnlyNav())
+				return NULL;
+
+			if (pNav && !pNav->CanNPCMakeJump(vStart, vEnd))
+			{
+				//pNav->RecordJumpFailure(vEnd);
+				return NULL;
+			}
+		}
+
 		AIMoveTrace_t moveTrace;
 		GetOuter()->GetMoveProbe()->MoveLimit( navType, vStart, vEnd, MASK_NPCSOLID, pTarget, &moveTrace );
 
@@ -1460,7 +1478,19 @@ AI_Waypoint_t *CAI_Pathfinder::BuildRoute( const Vector &vStart, const Vector &v
 	// Navmesh replaces the node route for ground NPCs (nodegraph stays as fallback)
 	if (!pResult && curNavType != NAV_CLIMB && EZ2_NavShouldHandleNPC(GetOuter()))
 	{
-		pResult = EZ2_NavBuildRoute(GetOuter(), vStart, vEnd, goalTolerance);
+		CAI_Navigator* pNav = GetOuter()->GetNavigator();
+		const bool bGroundOnly = pNav && pNav->ShouldUseGroundOnlyNav();
+
+		pResult = bGroundOnly
+			? EZ2_NavBuildGroundOnlyRoute(GetOuter(), vStart, vEnd, goalTolerance)
+			: EZ2_NavBuildRoute(GetOuter(), vStart, vEnd, goalTolerance);
+
+		// Ground-only and still nothing: the spot is unreachable on foot. Don't fall back to nodegraph jump links.
+		if (!pResult && bGroundOnly)
+		{
+			m_bIgnoreStaleLinks = false;
+			return NULL;
+		}
 
 		static ConVarRef s_fallback("ez2_nav_fallback_to_nodegraph");
 		if (!pResult && !s_fallback.GetBool())

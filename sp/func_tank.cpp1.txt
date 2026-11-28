@@ -1,0 +1,287 @@
+// #############################################################################
+//   CPropEmplacement
+// #############################################################################
+#define EMPLACEMENT_DEFAULT_MODEL	"models/props_combine/bunker_gun01.mdl"
+#define EMPLACEMENT_USE_DISTANCE	128.0f
+#define EMPLACEMENT_MAN_DISTANCE	40.0f
+
+class CPropEmplacement : public CFuncTankGun
+{
+public:
+	DECLARE_CLASS(CPropEmplacement, CFuncTankGun);
+	DECLARE_DATADESC();
+
+	CPropEmplacement() :
+		m_flManPointDist(0.0f),
+		m_iYawPose(-1),
+		m_iPitchPose(-1),
+		m_iMuzzleAttachment(-1)
+	{
+	}
+
+	void	Precache(void);
+	void	Spawn(void);
+	void	OnRestore(void);
+	void	Think(void);
+	void	UpdateOnRemove(void);
+	void	Use(CBaseEntity* pActivator, CBaseEntity* pCaller, USE_TYPE useType, float value);
+	int		ObjectCaps(void);
+	bool	NPC_FindManPoint(Vector& vecPos);
+	Vector	WorldBarrelPosition(void);
+
+private:
+	void	CachePropPoseParams(void);
+
+	float					m_flManPointDist;
+	QAngle					m_vecBaseAngles;
+	CHandle<CDynamicProp>	m_hGunProp;
+	CHandle<CBaseTrigger>	m_hAutoVolume;
+
+	int						m_iYawPose;
+	int						m_iPitchPose;
+	int						m_iMuzzleAttachment;
+};
+
+LINK_ENTITY_TO_CLASS(prop_emplacement, CPropEmplacement);
+
+BEGIN_DATADESC(CPropEmplacement)
+	DEFINE_KEYFIELD(m_flManPointDist, FIELD_FLOAT, "manpointdist"),
+	DEFINE_FIELD(m_vecBaseAngles, FIELD_VECTOR),
+	DEFINE_FIELD(m_hGunProp, FIELD_EHANDLE),
+	DEFINE_FIELD(m_hAutoVolume, FIELD_EHANDLE),
+END_DATADESC()
+
+//-----------------------------------------------------------------------------
+void CPropEmplacement::Precache(void)
+{
+	const char* pszModel = (GetModelName() != NULL_STRING) ? STRING(GetModelName()) : EMPLACEMENT_DEFAULT_MODEL;
+	PrecacheModel(pszModel);
+	PrecacheScriptSound("Weapon_functank.Single");
+}
+
+//-----------------------------------------------------------------------------
+void CPropEmplacement::CachePropPoseParams(void)
+{
+	CDynamicProp* pProp = m_hGunProp.Get();
+	if (!pProp)
+		return;
+
+	m_iYawPose = pProp->LookupPoseParameter("aim_yaw");
+	m_iPitchPose = pProp->LookupPoseParameter("aim_pitch");
+	m_iMuzzleAttachment = pProp->LookupAttachment("muzzle");
+}
+
+//-----------------------------------------------------------------------------
+void CPropEmplacement::Spawn(void)
+{
+	// 1. Resolve model name BEFORE clearing it from this entity
+	string_t iszModel = (GetModelName() != NULL_STRING)
+		? GetModelName()
+		: AllocPooledString(EMPLACEMENT_DEFAULT_MODEL);
+
+	Precache();
+
+	m_vecBaseAngles = GetAbsAngles();
+
+	// Keep modelname NULL on the func_tank itself so CBaseEntity never sets a .mdl
+	SetModelName(NULL_STRING);
+	AddEffects(EF_NODRAW);
+
+	// 2. Spawn the visual prop_dynamic WITHOUT parenting it so the tripod stays level
+	CDynamicProp* pProp = (CDynamicProp*)CreateEntityByName("prop_dynamic");
+	if (pProp)
+	{
+		pProp->SetModelName(iszModel);
+		pProp->KeyValue("solid", "6"); // VPhysics solid
+		pProp->SetAbsOrigin(GetAbsOrigin());
+		pProp->SetAbsAngles(m_vecBaseAngles);
+		DispatchSpawn(pProp);
+		pProp->Activate();
+		m_hGunProp = pProp;
+
+		CachePropPoseParams();
+	}
+
+	// 3. Create a working trigger_multiple volume if the mapper didn't set one
+	if (m_iszControlVolume == NULL_STRING)
+	{
+		CBaseTrigger* pTrigger = (CBaseTrigger*)CreateEntityByName("trigger_multiple");
+		if (pTrigger)
+		{
+			char szVolumeName[64];
+			Q_snprintf(szVolumeName, sizeof(szVolumeName), "emplacement_vol_%d", entindex());
+
+			pTrigger->KeyValue("targetname", szVolumeName);
+			pTrigger->KeyValue("spawnflags", "1"); // Clients (players) only
+			DispatchSpawn(pTrigger);
+			pTrigger->Activate();
+
+			pTrigger->SetSolid(SOLID_BBOX);
+			pTrigger->AddSolidFlags(FSOLID_TRIGGER | FSOLID_NOT_SOLID);
+			UTIL_SetSize(pTrigger, Vector(-128, -128, -32), Vector(128, 128, 96));
+			UTIL_SetOrigin(pTrigger, GetAbsOrigin());
+
+			m_iszControlVolume = AllocPooledString(szVolumeName);
+			m_hAutoVolume = pTrigger;
+			m_hControlVolume = pTrigger;
+		}
+	}
+
+	// 4. Configure func_tank defaults
+	m_spawnflags |= (SF_TANK_CANCONTROL | SF_TANK_NPC_CONTROLLABLE);
+
+	if (m_fireRate <= 0.0f)		m_fireRate = 8.0f;
+	if (m_yawRange <= 0.0f)		m_yawRange = 60.0f;
+	if (m_pitchRange <= 0.0f)	m_pitchRange = 30.0f;
+	if (m_yawRate <= 0.0f)		m_yawRate = 120.0f;
+	if (m_pitchRate <= 0.0f)	m_pitchRate = 120.0f;
+
+	if (m_barrelPos == vec3_origin)
+		m_barrelPos.Init(36.0f, 0.0f, 24.0f);
+
+	if (m_iEffectHandling == EH_NONE && m_iszShootSound == NULL_STRING &&
+		m_iszSpriteFlash == NULL_STRING && m_iszSpriteSmoke == NULL_STRING)
+		m_iEffectHandling = EH_AR2;
+
+#ifdef AMMOTYPE_MOVED
+	if (m_iszAmmoType == NULL_STRING && m_iAmmoType <= 0)
+		m_iAmmoType = GetAmmoDef()->Index("AR2");
+#endif
+
+	BaseClass::Spawn();
+
+	// Make the +use hitbox slightly larger than the prop's VPhysics hull so traces hit us first
+	SetSolid(SOLID_BBOX);
+	AddSolidFlags(FSOLID_NOT_SOLID);
+	UTIL_SetSize(this, Vector(-32, -32, 0), Vector(32, 32, 56));
+	UTIL_SetOrigin(this, GetAbsOrigin());
+}
+
+//-----------------------------------------------------------------------------
+int CPropEmplacement::ObjectCaps(void)
+{
+	return (BaseClass::ObjectCaps() | FCAP_IMPULSE_USE | FCAP_CONTINUOUS_USE);
+}
+
+//-----------------------------------------------------------------------------
+void CPropEmplacement::OnRestore(void)
+{
+	BaseClass::OnRestore();
+	CachePropPoseParams();
+}
+
+//-----------------------------------------------------------------------------
+void CPropEmplacement::Think(void)
+{
+	BaseClass::Think();
+
+	CDynamicProp* pProp = m_hGunProp.Get();
+	if (pProp)
+	{
+		QAngle angCurrent = GetAbsAngles();
+
+		float flYawDiff = AngleDiff(angCurrent.y, m_vecBaseAngles.y);
+		float flPitchDiff = AngleDiff(angCurrent.x, m_vecBaseAngles.x);
+
+		if (m_iYawPose >= 0)
+			pProp->SetPoseParameter(m_iYawPose, flYawDiff);
+
+		if (m_iPitchPose >= 0)
+			pProp->SetPoseParameter(m_iPitchPose, flPitchDiff);
+
+		pProp->StudioFrameAdvance();
+	}
+}
+
+//-----------------------------------------------------------------------------
+Vector CPropEmplacement::WorldBarrelPosition(void)
+{
+	CDynamicProp* pProp = m_hGunProp.Get();
+	if (pProp && m_iMuzzleAttachment > 0)
+	{
+		Vector vecMuzzle;
+		pProp->GetAttachment(m_iMuzzleAttachment, vecMuzzle);
+		return vecMuzzle;
+	}
+
+	return BaseClass::WorldBarrelPosition();
+}
+
+//-----------------------------------------------------------------------------
+void CPropEmplacement::Use(CBaseEntity* pActivator, CBaseEntity* pCaller, USE_TYPE useType, float value)
+{
+	// Only defer to stock rules if the MAPPER placed an external control volume
+	if (!m_hAutoVolume.Get() && m_iszControlVolume != NULL_STRING)
+	{
+		BaseClass::Use(pActivator, pCaller, useType, value);
+		return;
+	}
+
+	CBasePlayer* pPlayer = ToBasePlayer(pActivator);
+	if (!pPlayer)
+		return;
+
+	// Per-frame "keep using" call from a player that is already manning us
+	if (value == 2 && useType == USE_SET)
+	{
+		ControllerPostFrame();
+		return;
+	}
+
+	if (m_hController != pPlayer && useType != USE_OFF)
+	{
+		if (WorldSpaceCenter().DistToSqr(pPlayer->WorldSpaceCenter()) > Square(EMPLACEMENT_USE_DISTANCE))
+			return;
+
+		// Kick out an NPC that is walking to the gun
+		if (NPC_InRoute())
+			NPC_InterruptRoute();
+
+		// Take over from an allied NPC already on the gun (enemies keep it)
+		if (IsNPCControllable() && HasController())
+		{
+			if (!NPC_InterruptController())
+				return;
+		}
+
+		pPlayer->SetUseEntity(this);
+		StartControl(pPlayer);
+	}
+	else
+	{
+		StopControl();
+	}
+}
+
+//-----------------------------------------------------------------------------
+bool CPropEmplacement::NPC_FindManPoint(Vector& vecPos)
+{
+	if (BaseClass::NPC_FindManPoint(vecPos))
+		return true;
+
+	Vector vecForward;
+	AngleVectors(QAngle(0.0f, YawCenterWorld(), 0.0f), &vecForward);
+
+	const float flDist = (m_flManPointDist > 0.0f) ? m_flManPointDist : EMPLACEMENT_MAN_DISTANCE;
+	vecPos = GetAbsOrigin() - vecForward * flDist;
+
+	// Drop onto the floor so the NPC's goal is on the navmesh
+	trace_t tr;
+	UTIL_TraceLine(vecPos + Vector(0, 0, 32), vecPos - Vector(0, 0, 64), MASK_SOLID_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr);
+	if (!tr.startsolid && tr.fraction < 1.0f)
+		vecPos = tr.endpos;
+
+	return true;
+}
+
+//-----------------------------------------------------------------------------
+void CPropEmplacement::UpdateOnRemove(void)
+{
+	if (m_hGunProp.Get())
+		UTIL_Remove(m_hGunProp.Get());
+
+	if (m_hAutoVolume.Get())
+		UTIL_Remove(m_hAutoVolume.Get());
+
+	BaseClass::UpdateOnRemove();
+}

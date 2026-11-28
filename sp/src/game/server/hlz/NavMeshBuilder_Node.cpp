@@ -165,6 +165,8 @@ namespace
 	{
 		float a[3];
 		float b[3];
+		int   climbIdx;   // -1 = jump, otherwise index into the climb table
+		OffMeshConn_t() : climbIdx(-1) {}
 	};
 
 	EZ2_NavHintType_t TranslateSourceHintType(Hint_e sourceType)
@@ -252,6 +254,140 @@ namespace
 	}
 }
 
+
+int EZ2_NavAppendEntityHints(std::vector<EZ2_NavHint_t>& out, int hull, bool bSkipTactical)
+{
+	int n = 0;
+	AIHintIter_t it;
+	for (CAI_Hint* p = CAI_HintManager::GetFirstHint(&it); p; p = CAI_HintManager::GetNextHint(&it))
+	{
+		const EZ2_NavHintType_t type = TranslateSourceHintType(p->HintType());
+		if (bSkipTactical && (type == EZ2_NAVHINT_COVER_CROUCH ||
+			type == EZ2_NAVHINT_COVER_STAND || type == EZ2_NAVHINT_PINCH_OR_FLANK))
+			 continue;
+		
+		EZ2_NavHint_t h;
+		h.vecPos = ResolveHintFloorPos(p, static_cast<Hull_t>(hull));
+		h.flYaw = p->Yaw();
+		h.flFovCos = 1.0f;
+#ifdef MAPBASE
+		h.flRadius = static_cast<float>(p->GetRadius());
+#else
+		h.flRadius = 0.0f;
+#endif
+		h.flWeight = p->GetHintWeight();
+		h.sourceHintType = static_cast<int>(p->HintType());
+		h.navHintType = TranslateSourceHintType(p->HintType());
+		h.sourceWCNodeID = p->GetWCId();
+		h.polyRef = 0;
+		out.push_back(h);
+		++n;
+	}
+	return n;
+}
+
+int EZ2_NavCollectNodegraphClimbs(int hull, std::vector<EZ2_NavClimb_t>& out)
+{
+	if (!g_pBigAINet || g_pBigAINet->NumNodes() <= 0)
+		return 0;
+
+	hull = clamp(hull, 0, NUM_HULLS - 1);
+	CAI_Network* pNet = g_pBigAINet;
+	const int nNodes = pNet->NumNodes();
+	int added = 0;
+
+	for (int i = 0; i < nNodes; ++i)
+	{
+		CAI_Node* pStart = pNet->GetNode(i);
+		if (!pStart || pStart->GetType() != NODE_GROUND)
+			continue;
+
+		for (int l = 0; l < pStart->NumLinks(); ++l)
+		{
+			CAI_Link* pLink = pStart->GetLinkByIndex(l);
+			if (!pLink || !(pLink->m_iAcceptedMoveTypes[hull] & bits_CAP_MOVE_CLIMB))
+				continue;
+
+			const int firstID = pLink->DestNodeID(i);
+			CAI_Node* pFirst = pNet->GetNode(firstID);
+			if (!pFirst || pFirst->GetType() != NODE_CLIMB)
+				continue;
+
+			// Walk the chain of climb nodes until it exits onto a ground node
+			EZ2_NavClimb_t c;
+			int prevID = i, curID = firstID, endID = NO_NODE;
+			for (int step = 0; step < 64; ++step)
+			{
+				CAI_Node* pCur = pNet->GetNode(curID);
+				if (!pCur)
+					break;
+
+				EZ2_NavClimbPoint_t cp;
+				cp.pos = pCur->GetPosition(hull);
+				cp.yaw = pCur->GetYaw();
+				c.points.push_back(cp);
+
+				int nextClimb = NO_NODE, nextGround = NO_NODE;
+				for (int k = 0; k < pCur->NumLinks(); ++k)
+				{
+					CAI_Link* pl = pCur->GetLinkByIndex(k);
+					if (!pl || !(pl->m_iAcceptedMoveTypes[hull] & bits_CAP_MOVE_CLIMB))
+						continue;
+					const int d = pl->DestNodeID(curID);
+					if (d == prevID || d == i)
+						continue;
+					CAI_Node* pd = pNet->GetNode(d);
+					if (!pd)
+						continue;
+					if (pd->GetType() == NODE_GROUND)
+					{
+						if (nextGround == NO_NODE) nextGround = d;
+					}
+					else if (pd->GetType() == NODE_CLIMB && nextClimb == NO_NODE)
+					{
+						nextClimb = d;
+					}
+				}
+
+				if (nextGround != NO_NODE) { endID = nextGround; break; }
+				if (nextClimb == NO_NODE)
+					break;
+				prevID = curID;
+				curID = nextClimb;
+			}
+
+			if (endID == NO_NODE || endID <= i)   // each ladder is found from both ends; keep the lower-id start
+				continue;
+
+			CAI_Node* pEnd = pNet->GetNode(endID);
+			if (!pEnd)
+				continue;
+
+			c.base = pStart->GetPosition(hull);
+			c.top = pEnd->GetPosition(hull);
+
+			// Same ladder reached through a different entry link: keep the longer chain
+			bool bDup = false;
+			for (size_t e = 0; e < out.size(); ++e)
+			{
+				if (out[e].base.DistToSqr(c.base) < 64.0f && out[e].top.DistToSqr(c.top) < 64.0f)
+				{
+					if (c.points.size() > out[e].points.size())
+						out[e] = c;
+					bDup = true;
+					break;
+				}
+			}
+			if (!bDup)
+			{
+				out.push_back(c);
+				++added;
+			}
+		}
+	}
+	return added;
+}
+
 //-----------------------------------------------------------------------------
 // Core builder
 //-----------------------------------------------------------------------------
@@ -287,7 +423,7 @@ bool BuildAndSaveNodeSoloNavMesh(const char* pszMapName, const NodeNavBuildConfi
 		if (!pNode || pNode->GetType() != NODE_GROUND)
 			continue;
 
-		const Vector& vPos = pNode->GetOrigin();
+		const Vector vPos = pNode->GetPosition(hull);
 		geo.AddPad(vPos, geoHalf);
 		++nGroundNodes;
 
@@ -313,7 +449,7 @@ bool BuildAndSaveNodeSoloNavMesh(const char* pszMapName, const NodeNavBuildConfi
 
 			if (moveTypes & bits_CAP_MOVE_GROUND)
 			{
-				geo.AddCorridor(vPos, pDest->GetOrigin(), geoHalf, bDynamic);
+				geo.AddCorridor(vPos, pDest->GetPosition(hull), geoHalf, bDynamic);
 				++nGroundLinks;
 				if (bDynamic)
 					++nDynLinks;
@@ -322,7 +458,7 @@ bool BuildAndSaveNodeSoloNavMesh(const char* pszMapName, const NodeNavBuildConfi
 			{
 				OffMeshConn_t con;
 				SourceToRecast(vPos, con.a);
-				SourceToRecast(pDest->GetOrigin(), con.b);
+				SourceToRecast(pDest->GetPosition(hull), con.b);
 				offMesh.push_back(con);
 				++nJumpLinks;
 			}
@@ -340,7 +476,7 @@ bool BuildAndSaveNodeSoloNavMesh(const char* pszMapName, const NodeNavBuildConfi
 		CAI_Node* pLinkedNode = pCurHint->GetNode();
 		if (pLinkedNode && pLinkedNode->GetType() == NODE_GROUND)
 		{
-			geo.AddCorridor(vecHintPos, pLinkedNode->GetOrigin(), geoHalf, false);
+			geo.AddCorridor(vecHintPos, pLinkedNode->GetPosition(hull), geoHalf, false);
 		}
 		else
 		{
@@ -350,7 +486,7 @@ bool BuildAndSaveNodeSoloNavMesh(const char* pszMapName, const NodeNavBuildConfi
 				CAI_Node* pNear = pNet->GetNode(nearestID);
 				if (pNear)
 				{
-					geo.AddCorridor(vecHintPos, pNear->GetOrigin(), geoHalf, false);
+					geo.AddCorridor(vecHintPos, pNear->GetPosition(hull), geoHalf, false);
 				}
 			}
 		}
@@ -375,11 +511,25 @@ bool BuildAndSaveNodeSoloNavMesh(const char* pszMapName, const NodeNavBuildConfi
 		pCurHint = CAI_HintManager::GetNextHint(&hintIter);
 	}
 
+	std::vector<EZ2_NavClimb_t> climbs;
+	if (config.includeClimbLinks)
+	{
+		EZ2_NavCollectNodegraphClimbs(hull, climbs);
+		for (size_t c = 0; c < climbs.size(); ++c)
+		{
+			OffMeshConn_t con;
+			SourceToRecast(climbs[c].base, con.a);
+			SourceToRecast(climbs[c].top, con.b);
+			con.climbIdx = (int)c;
+			offMesh.push_back(con);
+		}
+	}
+
 	const int triCount = geo.TriCount();
 	const int vertCount = triCount * 3;
 
-	Msg("[EZ2 NavMesh] Nodegraph: %d ground nodes, %d ground links (%d dynamic), %d jump links, %d hints -> %d tris\n",
-		nGroundNodes, nGroundLinks, nDynLinks, nJumpLinks, static_cast<int>(translatedHints.size()), triCount);
+	Msg("[EZ2 NavMesh] Nodegraph: %d ground nodes, %d ground links (%d dynamic), %d jump links, %d ladders, %d hints -> %d tris\n",
+		nGroundNodes, nGroundLinks, nDynLinks, nJumpLinks, (int)climbs.size(), static_cast<int>(translatedHints.size()), triCount);
 
 	if (triCount <= 0)
 	{
@@ -553,13 +703,14 @@ bool BuildAndSaveNodeSoloNavMesh(const char* pszMapName, const NodeNavBuildConfi
 
 	for (int i = 0; i < nOff; ++i)
 	{
+		const bool bClimb = offMesh[i].climbIdx >= 0;
 		memcpy(&offVerts[i * 6 + 0], offMesh[i].a, sizeof(float) * 3);
 		memcpy(&offVerts[i * 6 + 3], offMesh[i].b, sizeof(float) * 3);
 		offRad[i] = config.corridorHalfWidth;
 		offDir[i] = DT_OFFMESH_CON_BIDIR;
-		offAreas[i] = EZ2_NAV_AREA_JUMP;
-		offFlags[i] = EZ2_NAV_FLAG_WALK | EZ2_NAV_FLAG_JUMP;
-		offIds[i] = (unsigned int)i;
+		offAreas[i] = bClimb ? EZ2_NAV_AREA_CLIMB : EZ2_NAV_AREA_JUMP;
+		offFlags[i] = EZ2_NAV_FLAG_WALK | (bClimb ? EZ2_NAV_FLAG_CLIMB : EZ2_NAV_FLAG_JUMP);
+		offIds[i] = bClimb ? (EZ2_NAV_CLIMB_USERID_FLAG | (unsigned int)offMesh[i].climbIdx) : (unsigned int)i;
 	}
 
 	dtNavMeshCreateParams params;
@@ -637,6 +788,7 @@ bool BuildAndSaveNodeSoloNavMesh(const char* pszMapName, const NodeNavBuildConfi
 		return false;
 
 	g_EZ2NavMeshManager.SetNavHints(translatedHints);
+	g_EZ2NavMeshManager.SetNavClimbs(climbs);
 
 	int boundHints = 0;
 	const std::vector<EZ2_NavHint_t>& snapped = g_EZ2NavMeshManager.GetNavHints();
@@ -671,8 +823,8 @@ bool BuildAndSaveNodeSoloNavMesh(const char* pszMapName, const NodeNavBuildConfi
 //-----------------------------------------------------------------------------
 // Console commands
 //-----------------------------------------------------------------------------
-static ConVar ez2_nav_node_agent_radius("ez2_nav_node_agent_radius", "16", 0, "Node navmesh build: agent radius");
-static ConVar ez2_nav_node_agent_height("ez2_nav_node_agent_height", "72", 0, "Node navmesh build: agent height");
+static ConVar ez2_nav_node_agent_radius("ez2_nav_node_agent_radius", "16", 0, "Node navmesh build: agent radius (<= 0 = derive from ez2_nav_node_hull)");
+static ConVar ez2_nav_node_agent_height("ez2_nav_node_agent_height", "72", 0, "Node navmesh build: agent height (<= 0 = derive from ez2_nav_node_hull)");
 static ConVar ez2_nav_node_agent_climb("ez2_nav_node_agent_climb", "18", 0, "Node navmesh build: max step height");
 static ConVar ez2_nav_node_agent_slope("ez2_nav_node_agent_slope", "60", 0, "Node navmesh build: max slope (degrees) for link quads");
 static ConVar ez2_nav_node_cell_size("ez2_nav_node_cell_size", "8", 0, "Node navmesh build: cell size");
@@ -681,6 +833,7 @@ static ConVar ez2_nav_node_corridor("ez2_nav_node_corridor", "24", 0, "Node navm
 static ConVar ez2_nav_node_hull("ez2_nav_node_hull", "0", 0, "Node navmesh build: Hull_t used to filter links (0 = HULL_HUMAN)");
 static ConVar ez2_nav_node_include_off("ez2_nav_node_include_off", "1", 0, "Node navmesh build: 1 = include OFF/dynamic links (tagged with their own area)");
 static ConVar ez2_nav_node_jump_links("ez2_nav_node_jump_links", "1", 0, "Node navmesh build: 1 = convert jump links to off-mesh connections");
+static ConVar ez2_nav_node_climb_links("ez2_nav_node_climb_links", "1", 0, "Node navmesh build: 1 = bake ladders as off-mesh climb connections");
 
 CON_COMMAND(ez2_nav_build_node, "Builds and saves maps/<map>_node.nav from the loaded nodegraph: ez2_nav_build_node [cellsize]")
 {
@@ -701,6 +854,13 @@ CON_COMMAND(ez2_nav_build_node, "Builds and saves maps/<map>_node.nav from the l
 	cfg.hull = ez2_nav_node_hull.GetInt();
 	cfg.includeOffLinks = ez2_nav_node_include_off.GetBool();
 	cfg.includeJumpLinks = ez2_nav_node_jump_links.GetBool();
+	cfg.includeClimbLinks = ez2_nav_node_climb_links.GetBool();
+
+	const Hull_t hullType = static_cast<Hull_t>(clamp(cfg.hull, 0, NUM_HULLS - 1));
+	if (cfg.agentRadius <= 0.0f)
+		cfg.agentRadius = MAX(1.0f, NAI_Hull::Width(hullType) * 0.5f);
+	if (cfg.agentHeight <= 0.0f)
+		cfg.agentHeight = MAX(1.0f, NAI_Hull::Height(hullType));
 
 	if (args.ArgC() >= 2)
 		cfg.cellSize = atof(args[1]);

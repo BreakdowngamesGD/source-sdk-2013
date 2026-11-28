@@ -307,6 +307,10 @@ namespace
 			if (!SnapToNavFloor(pQuery, hint.vecPos, vecFloor))
 				vecFloor = hint.vecPos;
 
+			// Spot is on the floor under a resting physics prop: occupied, skip
+			if (EZ2_NavPointInPropCutout(vecFloor))
+				continue;
+
 			Vector vecToThreatXY(vecThreatPos.x - vecFloor.x, vecThreatPos.y - vecFloor.y, 0.0f);
 			if (vecToThreatXY.LengthSqr() > 0.01f)
 				vecToThreatXY.NormalizeInPlace();
@@ -362,6 +366,134 @@ namespace
 
 		return added;
 	}
+
+	// Classifies one candidate floor spot against live obstacles (physics props / doors)
+	void EvaluateDynamicCandidate(dtNavMeshQuery* pQuery, const Vector& vecFloor, const Vector& vecCenter,
+		const Vector& vecThreatPos, std::vector<EZ2_CoverSpot_t>& outSpots)
+	{
+		const Vector vecThreatEye = vecThreatPos + Vector(0, 0, 56.0f);
+		const Vector vecStandEye = vecFloor + Vector(0, 0, 62.0f);
+		const Vector vecCrouchEye = vecFloor + Vector(0, 0, 32.0f);
+
+		CDynamicCoverTraceFilter standFilter;
+		CDynamicCoverTraceFilter crouchFilter;
+		const bool bStandDynBlocked = BlocksDynamicSight(vecThreatEye, vecStandEye, standFilter);
+		const bool bCrouchDynBlocked = BlocksDynamicSight(vecThreatEye, vecCrouchEye, crouchFilter);
+
+		Vector vecToThreatXY(vecThreatPos.x - vecFloor.x, vecThreatPos.y - vecFloor.y, 0.0f);
+		if (vecToThreatXY.LengthSqr() < 0.01f)
+			vecToThreatXY = Vector(1.0f, 0.0f, 0.0f);
+		else
+			vecToThreatXY.NormalizeInPlace();
+
+		const Vector vecProbePos = vecFloor + vecToThreatXY * 28.0f;
+		const float flObsHeight = MeasureDynamicObstacleHeight(vecProbePos, vecFloor.z, 76.0f);
+
+		const Vector vecRight(-vecToThreatXY.y, vecToThreatXY.x, 0.0f);
+		Vector vecLeftFloor, vecRightFloor;
+		const bool bLeftClear = SnapToNavFloor(pQuery, vecFloor - vecRight * 36.0f, vecLeftFloor) &&
+			HasLineOfSight(vecThreatEye, vecLeftFloor + Vector(0, 0, 56.0f));
+		const bool bRightClear = SnapToNavFloor(pQuery, vecFloor + vecRight * 36.0f, vecRightFloor) &&
+			HasLineOfSight(vecThreatEye, vecRightFloor + Vector(0, 0, 56.0f));
+
+		EZ2_CoverKind_t kind = EZ2_COVER_NONE;
+		Vector vecPeekDir(vec3_origin);
+		float flScore = 0.0f;
+
+		const bool bHasOpenDoor = standFilter.m_bHitOpenDoor || crouchFilter.m_bHitOpenDoor;
+		if (bHasOpenDoor && (bLeftClear || bRightClear))
+		{
+			kind = EZ2_COVER_CORNER;
+			vecPeekDir = bRightClear ? vecRight : -vecRight;
+			flScore += 22.0f;
+		}
+		else if (bStandDynBlocked && bCrouchDynBlocked)
+		{
+			if (bLeftClear || bRightClear)
+			{
+				kind = EZ2_COVER_CORNER;
+				vecPeekDir = bRightClear ? vecRight : -vecRight;
+				flScore += 30.0f;
+			}
+			else
+			{
+				kind = EZ2_COVER_TALL_WALL_OR_PROP;
+				flScore += 22.0f;
+			}
+		}
+		else if (bCrouchDynBlocked && !bStandDynBlocked && flObsHeight >= 22.0f && flObsHeight <= 46.0f)
+		{
+			kind = EZ2_COVER_LOW_SHORT;
+			flScore += 25.0f;
+		}
+		else if (flObsHeight >= 24.0f && (bLeftClear || bRightClear))
+		{
+			kind = EZ2_COVER_CORNER;
+			vecPeekDir = bRightClear ? vecRight : -vecRight;
+			flScore += 18.0f;
+		}
+
+		if (kind == EZ2_COVER_NONE)
+			return;
+
+		flScore -= vecFloor.DistTo(vecCenter) * 0.03f;
+		if (vecFloor.DistTo(vecThreatPos) < 140.0f)
+			flScore -= 15.0f;
+
+		EZ2_CoverSpot_t spot;
+		spot.vecPos = vecFloor;
+		spot.vecCoverNormal = vecToThreatXY;
+		spot.vecPeekDir = vecPeekDir;
+		spot.flObstacleHeight = flObsHeight;
+		spot.flScore = flScore;
+		spot.kind = kind;
+		outSpots.push_back(spot);
+	}
+
+	// Candidates placed directly behind (and to either side of) each resting prop / door, relative to the threat
+	void AddPropAnchoredCandidates(dtNavMeshQuery* pQuery, const Vector& vecCenter, const Vector& vecThreatPos,
+		float flSearchRadius, std::vector<EZ2_CoverSpot_t>& outSpots)
+	{
+		int nProps = 0;
+		for (CBaseEntity* pEnt = gEntList.FindEntityInSphere(NULL, vecCenter, flSearchRadius); pEnt && nProps < 32;
+			pEnt = gEntList.FindEntityInSphere(pEnt, vecCenter, flSearchRadius))
+		{
+			bool bOpen = false;
+			if (!IsMovablePropEntity(pEnt) && !IsDoorEntity(pEnt, bOpen))
+				continue;
+			if (pEnt->IsEffectActive(EF_NODRAW) || pEnt->IsSolidFlagSet(FSOLID_NOT_SOLID))
+				continue;
+
+			// A prop that's still tumbling makes bad cover
+			IPhysicsObject* pPhys = pEnt->VPhysicsGetObject();
+			if (pPhys && pPhys->IsMoveable() && !pPhys->IsAsleep())
+				continue;
+
+			Vector mins, maxs;
+			pEnt->CollisionProp()->WorldSpaceAABB(&mins, &maxs);
+			if (maxs.z - mins.z < 20.0f)
+				continue;
+
+			const Vector c = pEnt->WorldSpaceCenter();
+			const float flHalf = MAX(maxs.x - mins.x, maxs.y - mins.y) * 0.5f;
+
+			Vector away(c.x - vecThreatPos.x, c.y - vecThreatPos.y, 0.0f);
+			if (VectorNormalize(away) < 0.01f)
+				continue;
+
+			const Vector perp(-away.y, away.x, 0.0f);
+			const Vector behind = c + away * (flHalf + 24.0f);
+			const Vector cands[3] = { behind, behind + perp * (flHalf * 0.8f), behind - perp * (flHalf * 0.8f) };
+
+			++nProps;
+			for (int i = 0; i < 3; ++i)
+			{
+				Vector vecFloor;
+				if (SnapToNavFloor(pQuery, cands[i], vecFloor))
+					EvaluateDynamicCandidate(pQuery, vecFloor, vecCenter, vecThreatPos, outSpots);
+			}
+		}
+	}
 }
 
 void FindCoverSpotsAroundOrigin(
@@ -369,7 +501,8 @@ void FindCoverSpotsAroundOrigin(
 	const Vector& vecThreatPos,
 	float flSearchRadius,
 	int maxResults,
-	std::vector<EZ2_CoverSpot_t>& outSpots
+	std::vector<EZ2_CoverSpot_t>& outSpots,
+	bool bIncludeBaked
 )
 {
 	outSpots.clear();
@@ -381,109 +514,27 @@ void FindCoverSpotsAroundOrigin(
 	if (!pQuery)
 		return;
 
-	// 1. Use baked cover hints if present (e.g., from a _node.nav build)
-	int bakedCount = AppendBakedCoverHints(pQuery, vecCenter, vecThreatPos, flSearchRadius, outSpots);
+	// 1. Baked cover hints
+	const int bakedCount = bIncludeBaked
+		? AppendBakedCoverHints(pQuery, vecCenter, vecThreatPos, flSearchRadius, outSpots) : 0;
 
-	// 2. Dynamic cover pass ONLY checks movable/physics props and doorways (no static world traces)
-	Vector vecThreatEye = vecThreatPos + Vector(0, 0, 56.0f);
+	// 2a. Dynamic: spots anchored on nearby physics props / doors
+	AddPropAnchoredCandidates(pQuery, vecCenter, vecThreatPos, flSearchRadius, outSpots);
+
+	// 2b. Dynamic: coarse grid (catches open doorways etc.)
 	const int radialSteps = (bakedCount > 0) ? 2 : 3;
 	const int angleSteps = 12;
-
 	for (int rIdx = 1; rIdx <= radialSteps; ++rIdx)
 	{
-		float radius = (flSearchRadius * rIdx) / static_cast<float>(radialSteps);
+		const float radius = (flSearchRadius * rIdx) / static_cast<float>(radialSteps);
 		for (int aIdx = 0; aIdx < angleSteps; ++aIdx)
 		{
-			float angle = (2.0f * M_PI * aIdx) / static_cast<float>(angleSteps);
-			Vector vecCandidate(
-				vecCenter.x + cosf(angle) * radius,
-				vecCenter.y + sinf(angle) * radius,
-				vecCenter.z
-			);
+			const float angle = (2.0f * M_PI * aIdx) / static_cast<float>(angleSteps);
+			const Vector vecCandidate(vecCenter.x + cosf(angle) * radius, vecCenter.y + sinf(angle) * radius, vecCenter.z);
 
 			Vector vecFloor;
-			if (!SnapToNavFloor(pQuery, vecCandidate, vecFloor))
-				continue;
-
-			Vector vecStandEye = vecFloor + Vector(0, 0, 62.0f);
-			Vector vecCrouchEye = vecFloor + Vector(0, 0, 32.0f);
-
-			CDynamicCoverTraceFilter standFilter;
-			CDynamicCoverTraceFilter crouchFilter;
-			bool bStandDynBlocked = BlocksDynamicSight(vecThreatEye, vecStandEye, standFilter);
-			bool bCrouchDynBlocked = BlocksDynamicSight(vecThreatEye, vecCrouchEye, crouchFilter);
-
-			Vector vecToThreatXY(vecThreatPos.x - vecFloor.x, vecThreatPos.y - vecFloor.y, 0.0f);
-			vecToThreatXY.NormalizeInPlace();
-			if (vecToThreatXY.LengthSqr() < 0.01f)
-				vecToThreatXY = Vector(1.0f, 0.0f, 0.0f);
-
-			Vector vecProbePos = vecFloor + vecToThreatXY * 28.0f;
-			float flObsHeight = MeasureDynamicObstacleHeight(vecProbePos, vecFloor.z, 76.0f);
-
-			Vector vecRight(-vecToThreatXY.y, vecToThreatXY.x, 0.0f);
-			Vector vecLeftFloor, vecRightFloor;
-			bool bLeftClear = SnapToNavFloor(pQuery, vecFloor - vecRight * 36.0f, vecLeftFloor) &&
-				HasLineOfSight(vecThreatEye, vecLeftFloor + Vector(0, 0, 56.0f));
-			bool bRightClear = SnapToNavFloor(pQuery, vecFloor + vecRight * 36.0f, vecRightFloor) &&
-				HasLineOfSight(vecThreatEye, vecRightFloor + Vector(0, 0, 56.0f));
-
-			EZ2_CoverKind_t kind = EZ2_COVER_NONE;
-			Vector vecPeekDir(vec3_origin);
-			float flScore = 0.0f;
-
-			// Open doorway acts as a corner/flank peek spot when aligned near the point
-			bool bHasOpenDoor = standFilter.m_bHitOpenDoor || crouchFilter.m_bHitOpenDoor;
-			if (bHasOpenDoor && (bLeftClear || bRightClear))
-			{
-				kind = EZ2_COVER_CORNER;
-				vecPeekDir = bRightClear ? vecRight : -vecRight;
-				flScore += 22.0f;
-			}
-			else if (bStandDynBlocked && bCrouchDynBlocked)
-			{
-				if (bLeftClear || bRightClear)
-				{
-					kind = EZ2_COVER_CORNER;
-					vecPeekDir = bRightClear ? vecRight : -vecRight;
-					flScore += 30.0f;
-				}
-				else
-				{
-					kind = EZ2_COVER_TALL_WALL_OR_PROP;
-					flScore += 22.0f;
-				}
-			}
-			else if (bCrouchDynBlocked && !bStandDynBlocked && flObsHeight >= 22.0f && flObsHeight <= 46.0f)
-			{
-				kind = EZ2_COVER_LOW_SHORT;
-				flScore += 25.0f;
-			}
-			else if (flObsHeight >= 24.0f && (bLeftClear || bRightClear))
-			{
-				kind = EZ2_COVER_CORNER;
-				vecPeekDir = bRightClear ? vecRight : -vecRight;
-				flScore += 18.0f;
-			}
-
-			if (kind == EZ2_COVER_NONE)
-				continue;
-
-			float flDistCenter = vecFloor.DistTo(vecCenter);
-			float flDistThreat = vecFloor.DistTo(vecThreatPos);
-			flScore -= flDistCenter * 0.03f;
-			if (flDistThreat < 140.0f)
-				flScore -= 15.0f;
-
-			EZ2_CoverSpot_t spot;
-			spot.vecPos = vecFloor;
-			spot.vecCoverNormal = vecToThreatXY;
-			spot.vecPeekDir = vecPeekDir;
-			spot.flObstacleHeight = flObsHeight;
-			spot.flScore = flScore;
-			spot.kind = kind;
-
-			outSpots.push_back(spot);
+			if (SnapToNavFloor(pQuery, vecCandidate, vecFloor))
+				EvaluateDynamicCandidate(pQuery, vecFloor, vecCenter, vecThreatPos, outSpots);
 		}
 	}
 

@@ -8,6 +8,9 @@
 
 #include "cbase.h"
 #include "BasePropDoor.h"
+#include "props.h"
+#include "hlz/NavMeshDynamic.h"
+#include "physics_npc_solver.h"
 #include "ai_basenpc.h"
 #include "npcevent.h"
 #include "engine/IEngineSound.h"
@@ -2686,26 +2689,30 @@ void CDynamicProp::PropSetSequence( int nSequence )
 
 
 // NOTE: To avoid risk, currently these do nothing about collisions, only visually on/off
-void CDynamicProp::InputTurnOn( inputdata_t &inputdata )
+// NOTE: To avoid risk, currently these do nothing about collisions, only visually on/off
+void CDynamicProp::InputTurnOn(inputdata_t& inputdata)
 {
-	RemoveEffects( EF_NODRAW );
+	RemoveEffects(EF_NODRAW);
+	EZ2_NavUpdatePropObstacle(this); // Re-evaluate if solid/visible prop should block navmesh
 }
 
-void CDynamicProp::InputTurnOff( inputdata_t &inputdata )
+void CDynamicProp::InputTurnOff(inputdata_t& inputdata)
 {
-	AddEffects( EF_NODRAW );
+	AddEffects(EF_NODRAW);
+	EZ2_NavUpdatePropObstacle(this); // Clear/update block when turned off
 }
 
-void CDynamicProp::InputDisableCollision( inputdata_t &inputdata )
+void CDynamicProp::InputDisableCollision(inputdata_t& inputdata)
 {
-	AddSolidFlags( FSOLID_NOT_SOLID );
+	AddSolidFlags(FSOLID_NOT_SOLID);
+	EZ2_NavUpdatePropObstacle(this); // Unblock navmesh when collision is disabled
 }
 
-void CDynamicProp::InputEnableCollision( inputdata_t &inputdata )
+void CDynamicProp::InputEnableCollision(inputdata_t& inputdata)
 {
-	RemoveSolidFlags( FSOLID_NOT_SOLID );
+	RemoveSolidFlags(FSOLID_NOT_SOLID);
+	EZ2_NavUpdatePropObstacle(this); // Block navmesh when collision is re-enabled
 }
-
 //-----------------------------------------------------------------------------
 // Purpose: Ornamental prop that follows a studio
 //-----------------------------------------------------------------------------

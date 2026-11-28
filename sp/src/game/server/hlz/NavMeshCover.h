@@ -31,7 +31,8 @@ void FindCoverSpotsAroundOrigin(
 	const Vector& vecThreatPos,
 	float flSearchRadius,
 	int maxResults,
-	std::vector<EZ2_CoverSpot_t>& outSpots
+	std::vector<EZ2_CoverSpot_t>& outSpots,
+	bool bIncludeBaked = true
 );
 
 #endif // EZ2_NAVMESH_COVER_H

@@ -538,10 +538,21 @@ public:
 	void 				ClearNavFailCounter();
 	float				GetLastNavFailTime() const;
 	bool				TeleportAlongPath();
+	// Inside CAI_Navigator (public section, near GetNavFailCounter / ClearNavFailCounter):
+	// Jump gating (navmesh)
+	bool CanNPCMakeJump(const Vector& vecStart, const Vector& vecEnd);
+	void RecordJumpFailure(const Vector& vecLanding);
+	bool ShouldUseGroundOnlyNav();
+	void ResetJumpFailures();
 
 private:
 	bool				DoFindPath( void );							// Find a route
 	bool				DoFindPathToPathcorner( CBaseEntity *pPathCorner );
+
+	int		m_nJumpFailures;
+	float	m_flLastJumpFailTime;
+	float	m_flGroundOnlyUntil;
+	Vector	m_vecJumpTakeoff;
 
 protected:
 	virtual bool		DoFindPathToPos(void);
@@ -649,6 +660,8 @@ private:
 
 	int					m_nNavFailCounter;
 	float				m_flLastNavFailTime;
+	int					m_nJumpFailCount;
+	Vector				m_vecLastFailedJumpDest;
 public:
 	DECLARE_SIMPLE_DATADESC();
 };

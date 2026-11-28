@@ -13,6 +13,9 @@
 #include "NavMeshManager.h"
 #include "DetourNavMesh.h"
 #include "engine/IEngineTrace.h"
+#include "props.h"
+#include "doors.h"
+#include "BasePropDoor.h"
 #include <vector>
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -31,6 +34,34 @@ namespace
 	static const float STAND_H = 62.0f;
 	static const float SIDE_STEP = 36.0f;
 
+	class CCoverBakeTraceFilter : public CTraceFilter
+	{
+	public:
+		virtual bool ShouldHitEntity(IHandleEntity* pServerEntity, int contentsMask) override
+		{
+			CBaseEntity* pEnt = EntityFromEntityHandle(pServerEntity);
+			if (!pEnt)
+				return true;                         // static prop: not a CBaseEntity
+			if (pEnt->IsWorld())
+				return true;
+			if (pEnt->IsEffectActive(EF_NODRAW) || pEnt->GetMoveParent() != NULL)
+				return false;
+
+			// Bone-follower collision belonging to a prop_dynamic
+			if (FClassnameIs(pEnt, "phys_bone_follower"))
+			{
+				CBaseEntity* pOwner = pEnt->GetOwnerEntity();
+				return pOwner && dynamic_cast<CDynamicProp*>(pOwner) != NULL && pOwner->GetMoveParent() == NULL;
+			}
+
+			if (pEnt->IsSolidFlagSet(FSOLID_NOT_SOLID))
+				return false;
+			if (dynamic_cast<CPhysicsProp*>(pEnt) != NULL)
+				return false;
+			return dynamic_cast<CBaseProp*>(pEnt) != NULL;
+		}
+	};
+
 	inline void DetourToSrc(const float* p, Vector& out)
 	{
 		out.x = p[0];
@@ -38,10 +69,10 @@ namespace
 		out.z = p[1];
 	}
 
-	// World + static props only (no physics props / doors, those are handled at runtime)
+	// World + non-physics props only (skip physics props & doors; those are handled at runtime)
 	bool ProbeBlocked(const Vector& from, const Vector& to)
 	{
-		CTraceFilterWorldAndPropsOnly filter;
+		CCoverBakeTraceFilter filter;
 		trace_t tr;
 		UTIL_TraceLine(from, to, MASK_NPCWORLDSTATIC, &filter, &tr);
 
@@ -54,7 +85,7 @@ namespace
 
 	bool SnapToFloor(const Vector& p, Vector& out)
 	{
-		CTraceFilterWorldAndPropsOnly filter;
+		CCoverBakeTraceFilter filter;
 		trace_t tr;
 		UTIL_TraceLine(p + Vector(0, 0, 16.0f), p - Vector(0, 0, 64.0f), MASK_NPCWORLDSTATIC, &filter, &tr);
 		if (tr.startsolid)
@@ -154,64 +185,67 @@ int BakeFullMeshCoverHints(const dtNavMesh* pNavMesh, std::vector<EZ2_NavHint_t>
 	if (!ez2_nav_cover_bake.GetBool() || !pNavMesh)
 		return 0;
 
-	const dtMeshTile* pTile = pNavMesh->getTile(0);
-	if (!pTile || !pTile->header)
-		return 0;
-
 	const float sampleStep = MAX(ez2_nav_cover_sample.GetFloat(), 8.0f);
 	const float minDist = ez2_nav_cover_spacing.GetFloat();
 	const float minDistSqr = minDist * minDist;
 	const int maxHints = ez2_nav_cover_max.GetInt();
 
-	for (int i = 0; i < pTile->header->polyCount; ++i)
+	for (int t = 0; t < pNavMesh->getMaxTiles(); ++t)
 	{
-		const dtPoly* pPoly = &pTile->polys[i];
-		if (pPoly->getType() == DT_POLYTYPE_OFFMESH_CONNECTION)
+		const dtMeshTile* pTile = pNavMesh->getTile(t);
+		if (!pTile || !pTile->header)
 			continue;
 
-		const int nv = pPoly->vertCount;
-		if (nv < 3)
-			continue;
-
-		Vector verts[DT_VERTS_PER_POLYGON];
-		Vector centroid(0, 0, 0);
-		for (int v = 0; v < nv; ++v)
+		for (int i = 0; i < pTile->header->polyCount; ++i)
 		{
-			DetourToSrc(&pTile->verts[pPoly->verts[v] * 3], verts[v]);
-			centroid += verts[v];
-		}
-		centroid /= (float)nv;
-
-		for (int j = 0; j < nv; ++j)
-		{
-			// Only border edges (no neighbour poly): these run along walls/ledges
-			if (pPoly->neis[j] != 0)
+			const dtPoly* pPoly = &pTile->polys[i];
+			if (pPoly->getType() == DT_POLYTYPE_OFFMESH_CONNECTION)
 				continue;
 
-			const Vector& a = verts[j];
-			const Vector& b = verts[(j + 1) % nv];
+			const int nv = pPoly->vertCount;
+			if (nv < 3)
+				continue;
 
-			const float len = (b - a).Length2D();
-			const int n = MAX(1, (int)(len / sampleStep));
-
-			for (int k = 0; k < n; ++k)
+			Vector verts[DT_VERTS_PER_POLYGON];
+			Vector centroid(0, 0, 0);
+			for (int v = 0; v < nv; ++v)
 			{
-				Vector p = a + (b - a) * ((k + 0.5f) / (float)n);
+				DetourToSrc(&pTile->verts[pPoly->verts[v] * 3], verts[v]);
+				centroid += verts[v];
+			}
+			centroid /= (float)nv;
 
-				// Nudge a little toward the poly interior so we're safely on the mesh
-				Vector toC = centroid - p;
-				toC.z = 0.0f;
-				const float dC = VectorNormalize(toC);
-				p += toC * MIN(8.0f, dC);
-
-				Vector floorPos;
-				if (!SnapToFloor(p, floorPos))
+			for (int j = 0; j < nv; ++j)
+			{
+				// Only border edges (no neighbour poly): these run along walls/ledges
+				if (pPoly->neis[j] != 0)
 					continue;
 
-				ProcessSample(floorPos, outHints, minDistSqr, maxHints);
+				const Vector& a = verts[j];
+				const Vector& b = verts[(j + 1) % nv];
 
-				if ((int)outHints.size() >= maxHints)
-					return (int)outHints.size();
+				const float len = (b - a).Length2D();
+				const int n = MAX(1, (int)(len / sampleStep));
+
+				for (int k = 0; k < n; ++k)
+				{
+					Vector p = a + (b - a) * ((k + 0.5f) / (float)n);
+
+					// Nudge a little toward the poly interior so we're safely on the mesh
+					Vector toC = centroid - p;
+					toC.z = 0.0f;
+					const float dC = VectorNormalize(toC);
+					p += toC * MIN(8.0f, dC);
+
+					Vector floorPos;
+					if (!SnapToFloor(p, floorPos))
+						continue;
+
+					ProcessSample(floorPos, outHints, minDistSqr, maxHints);
+
+					if ((int)outHints.size() >= maxHints)
+						return (int)outHints.size();
+				}
 			}
 		}
 	}

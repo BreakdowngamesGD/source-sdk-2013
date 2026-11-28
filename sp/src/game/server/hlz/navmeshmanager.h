@@ -72,6 +72,7 @@ struct EZ2_NavHint_t
 	EHANDLE hClaimedBy;
 	float flNextAvailableTime;
 	bool bDisabled;          // runtime: mirrored from the live CAI_Hint (see navmesh_dynamic.cpp)
+	Vector vecLiveOrigin;    // runtime: last seen CAI_Hint origin (vec3_invalid = not seen yet)
 
 	EZ2_NavHint_t()
 		: vecPos(vec3_origin)
@@ -85,8 +86,27 @@ struct EZ2_NavHint_t
 		, polyRef(0)
 		, flNextAvailableTime(0.0f)
 		, bDisabled(false)
+		, vecLiveOrigin(vec3_invalid)
 	{
 	}
+};
+
+// Userid flag on off-mesh connections that are ladders (low bits = index into the climb table)
+static const unsigned int EZ2_NAV_CLIMB_USERID_FLAG = 0x40000000u;
+
+struct EZ2_NavClimbPoint_t
+{
+	Vector pos;
+	float  yaw;
+	EZ2_NavClimbPoint_t() : pos(0, 0, 0), yaw(0.0f) {}
+};
+
+struct EZ2_NavClimb_t
+{
+	Vector base;   // ground position at the bottom (off-mesh endpoint)
+	Vector top;    // ground position at the top (off-mesh endpoint)
+	std::vector<EZ2_NavClimbPoint_t> points;   // climb nodes, bottom -> top
+	EZ2_NavClimb_t() : base(0, 0, 0), top(0, 0, 0) {}
 };
 
 class CEZ2_NavMeshManager
@@ -120,6 +140,11 @@ public:
 	std::vector<EZ2_NavHint_t>& AccessNavHints() { return m_NavHints; }
 	int GetNavHintCount() const { return static_cast<int>(m_NavHints.size()); }
 
+	// Ladder / climb table (indexed by off-mesh userId & ~EZ2_NAV_CLIMB_USERID_FLAG)
+	void SetNavClimbs(const std::vector<EZ2_NavClimb_t>& climbs) { m_NavClimbs = climbs; }
+	const std::vector<EZ2_NavClimb_t>& GetNavClimbs() const { return m_NavClimbs; }
+	const EZ2_NavClimb_t* FindNavClimbNear(const Vector& pos, float radius) const;
+
 	EZ2_NavHint_t* FindBestNavHint(
 		CBaseEntity* pClaimant,
 		const Vector& vecOrigin,
@@ -132,11 +157,16 @@ public:
 	bool ClaimNavHint(EZ2_NavHint_t* pHint, CBaseEntity* pClaimant);
 	void ReleaseNavHint(EZ2_NavHint_t* pHint, float flCooldown = 0.0f);
 
+	// Re-snaps one hint's polyRef to the mesh (0 if no poly is near it)
+	void SnapHintToMesh(EZ2_NavHint_t & h);
+
 private:
 	bool LoadSoloNavMesh(const char* pszFilePath, EZ2_NavProfile_t expectedProfile);
 	void FreeQueryOnly();
 	void FreeNavMeshOnly();
 	void ResnapLoadedHintsToMesh();
+
+	std::vector<EZ2_NavClimb_t> m_NavClimbs;
 
 	dtNavMesh* m_pNavMesh;
 	dtNavMeshQuery* m_pNavQuery;
